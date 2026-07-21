@@ -24,7 +24,7 @@ Ce qui N'EST PAS géré ici (déjà pris en charge ailleurs dans le projet) :
 
 Prérequis :
     - Dossier ASSETS_DIR (adventure_navigation.py) contenant :
-        support_champion.png, select_button.png, travel_button.png,
+        support_champion.png, select_button.png, voyage_button.png,
         final_boss.png, mid_boss.png, combat_button.png
     - Un dossier dédié (node_folder) contenant UNIQUEMENT les images
       des nodes aléatoires possibles (node_type_1.png, node_type_2.png, ...)
@@ -46,7 +46,7 @@ from click_utils import (
 # ============================================================
 
 # Nombre de nodes aléatoires à traverser avant le boss (fixé par la spec).
-NUMBER_OF_RANDOM_NODES = 2
+NUMBER_OF_RANDOM_NODES = 1
 
 # Nombre de tentatives par étape en cas d'échec de détection.
 DEFAULT_RETRIES = 3
@@ -74,10 +74,17 @@ def choose_support_champion(retries=DEFAULT_RETRIES, timeout=DEFAULT_TIMEOUT):
             logging.warning("Champion de soutien non détecté, nouvelle tentative...")
             continue
 
-        if not click_button("select_button", timeout=timeout):
-            logging.warning("Bouton 'select_button' non détecté après sélection du champion.")
+        if not click_button("voyage_button", timeout=timeout):
+            logging.warning("Bouton 'voyage_button' non détecté après sélection du champion.")
             continue
 
+        if not click_button("event_option", timeout=timeout):
+            logging.warning("Bouton 'event_option' non détecté après voyage vers champion.")
+            continue
+        
+        if not click_button("select_button", timeout=timeout):
+            logging.warning("Bouton 'select_button' non détecté après voyage vers champion.")
+            continue
         logging.info("Champion de soutien sélectionné avec succès.")
         return True
 
@@ -92,7 +99,7 @@ def choose_support_champion(retries=DEFAULT_RETRIES, timeout=DEFAULT_TIMEOUT):
 def _handle_single_node(node_folder, retries=DEFAULT_RETRIES, timeout=DEFAULT_TIMEOUT):
     """
     Gère un seul node aléatoire : détecte quelle image du dossier
-    correspond à l'écran, clique dessus, puis clique sur 'travel_button'.
+    correspond à l'écran, clique dessus, puis clique sur 'voyage_button'.
 
     Retourne True en cas de succès, False sinon.
     """
@@ -111,11 +118,15 @@ def _handle_single_node(node_folder, retries=DEFAULT_RETRIES, timeout=DEFAULT_TI
 
         logging.info(f"Node cliqué : {image_path}")
 
-        if not click_button("travel_button", timeout=timeout):
-            logging.warning("Bouton 'travel_button' non détecté après clic sur le node.")
+        if not click_button("voyage_button", timeout=timeout):
+            logging.warning("Bouton 'voyage_button' non détecté après clic sur le node.")
             continue
 
         logging.info("Déplacement vers le node confirmé.")
+        
+        if not click_button("quit_button", timeout=timeout):
+            logging.warning("Bouton 'quit_button' non détecté après ouverture node.")
+            continue
         return True
 
     logging.error(f"Échec de la gestion du node après {retries} tentatives.")

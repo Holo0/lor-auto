@@ -27,6 +27,7 @@ TEMPLATES = {
     "combat_button": os.path.join(ASSETS_DIR, "combat_button.png"),
     "continue_button": os.path.join(ASSETS_DIR, "continue_button.png"),
     "voyage_button": os.path.join(ASSETS_DIR, "voyage_button.png"),
+    "event_option": os.path.join(ASSETS_DIR, "event_option.png"),
 
     "normal_node": os.path.join(ASSETS_DIR, "normal_node.png"),
     "enemy_node": os.path.join(ASSETS_DIR, "enemy_node.png"),
@@ -34,7 +35,6 @@ TEMPLATES = {
 
     # Défi hebdomadaire
     "support_champion": os.path.join(ASSETS_DIR, "support_champion_node.png"),
-    "travel_button": os.path.join(ASSETS_DIR, "travel_button.png"),
     "final_boss": os.path.join(ASSETS_DIR, "final_boss.png"),
     "mid_boss": os.path.join(ASSETS_DIR, "mid_boss.png"),
 }
