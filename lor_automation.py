@@ -6,8 +6,6 @@ import logging
 import pyautogui
 
 # Modules externes (vision)
-from click_utils import click_button, human_click, human_move_mouse
-from lor_battle import try_combat
 from navigate import navigate_weekly_challenge
 
 # ============================================================

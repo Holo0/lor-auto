@@ -36,7 +36,6 @@ TEMPLATES = {
     # Défi hebdomadaire
     "support_champion": os.path.join(ASSETS_DIR, "support_champion_node.png"),
     "final_boss": os.path.join(ASSETS_DIR, "final_boss.png"),
-    "mid_boss": os.path.join(ASSETS_DIR, "mid_boss.png"),
 }
 
 # ============================================================
