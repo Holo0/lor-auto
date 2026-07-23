@@ -54,6 +54,14 @@ Prérequis :
         final_boss.png, secondary_enemy_node.png, combat_button.png, quit_button.png
     - Un dossier dédié (node_folder) contenant UNIQUEMENT les images
       des nodes aléatoires possibles (node_type_1.png, node_type_2.png, ...)
+
+Pauses humaines :
+    Toutes les fonctions de clic/détection utilisées ici (click_button,
+    click_image, safe_click, wait_for_image, find_first_match_in_folder)
+    appliquent déjà des délais aléatoires définis dans click_utils.py
+    (DELAY_AFTER_CLICK, DELAY_AFTER_TRANSITION, DELAY_BEFORE_SEARCH).
+    On y ajoute ici DELAY_BETWEEN_RETRIES entre deux tentatives d'une
+    même étape, pour ne pas re-scanner l'écran en boucle serrée.
 """
 
 import logging
@@ -65,6 +73,8 @@ from click_utils import (
     find_first_match_in_folder,
     safe_click,
     wait_for_image,
+    human_delay,
+    DELAY_BETWEEN_RETRIES,
 )
 
 # ============================================================
@@ -95,18 +105,22 @@ def choose_support_champion(retries=DEFAULT_RETRIES, timeout=DEFAULT_TIMEOUT):
 
         if not click_image(TEMPLATES["support_champion"], timeout=timeout):
             logging.warning("Champion de soutien non détecté, nouvelle tentative...")
+            human_delay(DELAY_BETWEEN_RETRIES)
             continue
 
-        if not click_button("voyage_button", timeout=timeout):
+        if not click_button("voyage_button", timeout=timeout, transition=True):
             logging.warning("Bouton 'voyage_button' non détecté après sélection du champion.")
+            human_delay(DELAY_BETWEEN_RETRIES)
             continue
 
-        if not click_button("event_option", timeout=timeout):
+        if not click_button("event_option", timeout=timeout, transition=True):
             logging.warning("Bouton 'event_option' non détecté après voyage vers champion.")
+            human_delay(DELAY_BETWEEN_RETRIES)
             continue
 
-        if not click_button("select_button", timeout=timeout):
+        if not click_button("select_button", timeout=timeout, transition=True):
             logging.warning("Bouton 'select_button' non détecté après voyage vers champion.")
+            human_delay(DELAY_BETWEEN_RETRIES)
             continue
 
         logging.info("Champion de soutien sélectionné avec succès.")
@@ -145,23 +159,27 @@ def _handle_single_node(node_folder, known_match=None, retries=DEFAULT_RETRIES, 
 
         if not image_path:
             logging.warning("Aucun node reconnu à l'écran, nouvelle tentative...")
+            human_delay(DELAY_BETWEEN_RETRIES)
             continue
 
         x, y = coords
         if not safe_click(x, y):
             logging.warning(f"Échec du clic sur le node '{image_path}'.")
+            human_delay(DELAY_BETWEEN_RETRIES)
             continue
 
         logging.info(f"Node cliqué : {image_path}")
 
-        if not click_button("voyage_button", timeout=timeout):
+        if not click_button("voyage_button", timeout=timeout, transition=True):
             logging.warning("Bouton 'voyage_button' non détecté après clic sur le node.")
+            human_delay(DELAY_BETWEEN_RETRIES)
             continue
 
         logging.info("Déplacement vers le node confirmé.")
 
-        if not click_button("quit_button", timeout=timeout):
+        if not click_button("quit_button", timeout=timeout, transition=True):
             logging.warning("Bouton 'quit_button' non détecté après ouverture node.")
+            human_delay(DELAY_BETWEEN_RETRIES)
             continue
 
         return True
@@ -234,21 +252,25 @@ def _engage_boss(boss_key, coords=None, retries=DEFAULT_RETRIES, timeout=DEFAULT
 
         if not current_coords:
             logging.warning(f"'{boss_key}' non détecté, nouvelle tentative...")
+            human_delay(DELAY_BETWEEN_RETRIES)
             continue
 
         x, y = current_coords
         if not safe_click(x, y):
             logging.warning(f"Échec du clic sur '{boss_key}'.")
+            human_delay(DELAY_BETWEEN_RETRIES)
             continue
 
         logging.info(f"'{boss_key}' cliqué.")
 
-        if not click_button("voyage_button", timeout=timeout):
+        if not click_button("voyage_button", timeout=timeout, transition=True):
             logging.warning("Bouton 'voyage_button' non détecté après sélection du boss.")
+            human_delay(DELAY_BETWEEN_RETRIES)
             continue
 
-        if not click_button("combat_button", timeout=timeout):
+        if not click_button("combat_button", timeout=timeout, transition=True):
             logging.warning("Bouton 'combat_button' non détecté après sélection du boss.")
+            human_delay(DELAY_BETWEEN_RETRIES)
             continue
 
         logging.info(f"Combat contre '{boss_key}' lancé.")

@@ -6,6 +6,7 @@ import logging
 import pyautogui
 
 # Modules externes (vision)
+from lor_battle import play_combat
 from navigate import navigate_weekly_challenge
 
 # ============================================================
