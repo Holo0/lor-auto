@@ -1,16 +1,20 @@
 import json
+import logging
 from pathlib import Path
 from dataclasses import dataclass
-from typing import List, Optional, Dict
+from typing import List, Optional
 
 import cv2
 import numpy as np
 import pyautogui
 import requests
 
+from detect_chiffres import ocr_number
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
 BASE_URL = "http://127.0.0.1:21337"
 CARD_SETS_PATH = Path("LoR-Bot/card_sets")
-CHIFFRES_PATH = Path("chiffres")
 
 DEBUG_DIR = Path("debug_cards")
 
@@ -43,10 +47,9 @@ class Card:
 
 class LoRClient:
 
-    def __init__(self, card_sets_path=CARD_SETS_PATH, chiffres_path=CHIFFRES_PATH):
+    def __init__(self, card_sets_path=CARD_SETS_PATH):
         self.base_url = BASE_URL
         self.cards_db = self._load_cards(card_sets_path)
-        self.digit_templates = self._load_digit_templates(chiffres_path)
 
     def _load_cards(self, folder: Path) -> dict:
         db = {}
@@ -57,24 +60,6 @@ class LoRClient:
                     for card in data:
                         db[card["cardCode"]] = card
         return db
-
-    def _load_digit_templates(self, folder: Path) -> Dict[str, np.ndarray]:
-        templates = {}
-        for path in folder.glob("*.png"):
-            digit = path.stem
-            if not digit.isdigit():
-                continue
-            img = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
-            if img is None:
-                continue
-            if img.shape[2] == 4:
-                alpha = img[:, :, 3]
-                gray = cv2.cvtColor(img[:, :, :3], cv2.COLOR_BGR2GRAY)
-                gray[alpha == 0] = 255
-            else:
-                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            templates[digit] = gray
-        return templates
 
     def get(self, endpoint: str):
         r = requests.get(f"{self.base_url}/{endpoint}", timeout=2)
@@ -131,61 +116,24 @@ class LoRClient:
 
         return zones
 
-    def _read_number_from_crop(self, crop: np.ndarray) -> Optional[int]:
-        if not self.digit_templates or crop.size == 0:
-            return None
-
-        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-        _, bw = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY)
-        if np.mean(bw) < 128:
-            bw = cv2.bitwise_not(bw)
-
-        h, w = bw.shape
-        detections = []
-
-        for digit, tmpl in self.digit_templates.items():
-            th, tw = tmpl.shape
-            scale = h / th
-            if scale <= 0:
-                continue
-            new_tw = int(tw * scale)
-            if new_tw <= 0 or new_tw > w:
-                continue
-            resized = cv2.resize(tmpl, (new_tw, h), interpolation=cv2.INTER_LINEAR)
-            _, resized_bw = cv2.threshold(resized, 128, 255, cv2.THRESH_BINARY)
-            if np.mean(resized_bw) < 128:
-                resized_bw = cv2.bitwise_not(resized_bw)
-            res = cv2.matchTemplate(bw, resized_bw, cv2.TM_CCOEFF_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-            if max_val >= 0.3:
-                detections.append((max_loc[0], digit, max_val))
-
-        if not detections:
-            return None
-
-        detections.sort(key=lambda d: d[0])
-        digits = []
-        for x, digit, score in detections:
-            if any(abs(x - ux) < 15 for ux, _ in digits):
-                continue
-            digits.append((x, digit))
-
-        if not digits:
-            return None
-
-        try:
-            return int("".join(d[1] for d in digits))
-        except ValueError:
-            return None
-
     def _get_stat_crop(self, screen: np.ndarray, rect: dict, rel: tuple) -> Optional[np.ndarray]:
         x, y, w, h = rect["TopLeftX"], rect["TopLeftY"], rect["Width"], rect["Height"]
+        # L'API positional-rectangles donne Y depuis le BAS de l'écran
+        # (voir _save_debug_card, qui fait déjà cette conversion) : il
+        # faut la même inversion ici, sinon on découpe au mauvais
+        # endroit de l'écran et la case est vide -> aucun chiffre ne
+        # peut jamais matcher.
+        y = screen.shape[0] - y
         rx, ry, rw, rh = rel
-        cx = int(x + w * rx)
-        cy = int(y + h * ry)
-        cw = int(w * rw)
-        ch = int(h * rh)
-        return screen[cy:cy + ch, cx:cx + cw]
+        cx = int(x + w + rx)
+        cy = int(y + h + ry)
+        cw = int(w + rw)
+        ch = int(h + rh)
+        crop = screen[cy:cy + ch, cx:cx + cw]
+        if crop.size == 0:
+            logging.warning(f"Crop vide pour {rect.get('CardCode')} (cx={cx}, cy={cy}, cw={cw}, ch={ch})")
+            return None
+        return crop
 
     def _save_debug_card(self, screen: np.ndarray, rect: dict):
         x, y, w, h = rect["TopLeftX"], rect["TopLeftY"], rect["Width"], rect["Height"]
@@ -219,12 +167,18 @@ class LoRClient:
 
             attack_read = None
             health_read = None
+            zone = zones.get(rect["CardID"], "unknown")
 
-            if card_type == "Unit":
-                atk_crop = self._get_stat_crop(screen, rect, ATTACK_REL)
-                hp_crop = self._get_stat_crop(screen, rect, HEALTH_REL)
-                attack_read = self._read_number_from_crop(atk_crop)
-                health_read = self._read_number_from_crop(hp_crop)
+            if card_type == "Unit" and zone == "board":
+                hauteurScreen = 159
+                largeurScreen = 126
+                atk_x, atk_y, atk_w, atk_h = 17, 8, 39, 26
+                hp_x, hp_y, hp_w, hp_h = 74, 8, 36, 26
+
+                atk_crop = self._get_stat_crop(screen, rect, (atk_x-largeurScreen, atk_y-hauteurScreen, atk_w-largeurScreen, atk_h-hauteurScreen))
+                hp_crop = self._get_stat_crop(screen, rect, (hp_x-largeurScreen, hp_y-hauteurScreen, hp_w-largeurScreen, hp_h-hauteurScreen))
+                attack_read = ocr_number(atk_crop, name=f"{code}_atk", debug=False)
+                health_read = ocr_number(hp_crop, name=f"{code}_hp", debug=False)
 
             self._save_debug_card(screen, rect)
 
@@ -242,7 +196,7 @@ class LoRClient:
                 width=rect["Width"],
                 height=rect["Height"],
                 local_player=rect["LocalPlayer"],
-                zone=zones.get(rect["CardID"], "unknown"),
+                zone=zone,
             )
             result.append(card)
 

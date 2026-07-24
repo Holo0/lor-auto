@@ -33,7 +33,7 @@ def is_mostly_white(crop):
     return white_pixels / total_pixels > 0.40
 
 
-def ocr_number(crop, name="unknown"):
+def ocr_number(crop, name="unknown", debug=False):
     if crop is None or crop.size == 0:
         return None
 
@@ -47,8 +47,9 @@ def ocr_number(crop, name="unknown"):
         print(f"{name}: ignoré (pas de couleur de stat)")
         return None
 
-    debug_dir = Path("debug_ocr")
-    debug_dir.mkdir(exist_ok=True)
+    if debug:
+      debug_dir = Path("debug_ocr")
+      debug_dir.mkdir(exist_ok=True)
 
     cv2.imwrite(str(debug_dir / f"{name}_crop.png"), crop)
 
@@ -67,9 +68,9 @@ def ocr_number(crop, name="unknown"):
         255,
         cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )
-    # processed = preprocess_lor(gray)
 
-    cv2.imwrite(str(debug_dir / f"{name}_processed.png"), processed)
+    if debug:
+      cv2.imwrite(str(debug_dir / f"{name}_processed.png"), processed)
 
     result = reader.readtext(
         processed,
