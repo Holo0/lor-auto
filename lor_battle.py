@@ -1,74 +1,91 @@
-import time
-import random
-from pathlib import Path
-import subprocess
-import sys
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+lor_battle.py
+
+Pont entre la navigation dans l'aventure (navigate.py) et le combat.
+
+Ce module lançait auparavant l'ancien bot vendorisé
+(LoR-Bot/code/LOR_Bot.py) dans un sous-processus. Il appelle désormais
+notre propre boucle, `combat.CombatLoop`.
+
+Ce que le changement apporte :
+    - un seul bot à maintenir, et non deux dont un opaque ;
+    - le résultat du combat est exploitable (victoire, tours joués,
+      raison de l'arrêt) au lieu d'un simple code de sortie ;
+    - plus de dépendance à pywin32/keyboard ni au constants.py de
+      201 Ko de l'ancien projet.
+
+Seul `LoR-Bot/card_sets/` reste nécessaire : c'est la base de cartes
+utilisée par lor_api. `LoR-Bot/code/download_card_sets.py` sert à la
+mettre à jour quand un nouveau set sort.
+"""
+
 import logging
-from click_utils import (click_button, human_click)
+import random
+import time
+
+from click_utils import click_button, human_click
 
 
 def _handle_post_combat():
-  """
-  Gère l'écran de fin de combat : détection de 'after_combat' puis clic
-  sur 'continue_button' après un court délai. Retourne True si les deux
-  écrans ont été détectés et cliqués avec succès.
-  """
-  if not click_button("after_combat", timeout=20):
-    logging.warning("Image 'after_combat' non détectée après la fin du combat.")
-    return False
+    """
+    Gère l'écran de fin de combat : détection de 'after_combat' puis clic
+    sur 'continue_button' après un court délai. Retourne True si les deux
+    écrans ont été détectés et cliqués avec succès.
+    """
+    if not click_button("after_combat", timeout=20):
+        logging.warning("Image 'after_combat' non détectée après la fin du combat.")
+        return False
 
-  logging.info("Écran post-combat détecté et cliqué.")
-  time.sleep(3)
-
-  if not click_button("continue_button", timeout=5):
-    logging.warning("Deuxième image 'continue_button' non détectée après le délai.")
-    return False
-
-  logging.info("Deuxième clic post-combat effectué après 3 secondes.")
-  return True
-
-
-def try_combat(node_x, node_y):
-  """Try to play combat using the original LoR bot combat loop, en gérant
-  les éventuels réessais ('retry') jusqu'à validation du combat."""
-
-  result = play_combat()
-
-  if not _handle_post_combat():
-    return result
-
-  while click_button("retry", timeout=5):
-    logging.info("Bouton 'Réessayer' cliqué.")
+    logging.info("Écran post-combat détecté et cliqué.")
     time.sleep(3)
-    human_click(node_x, node_y)
-    time.sleep(random.uniform(1.5, 2.5))
 
-    if not click_button("combat_button"):
-      continue
+    if not click_button("continue_button", timeout=5):
+        logging.warning("Deuxième image 'continue_button' non détectée après le délai.")
+        return False
 
-    logging.info("Bouton Combat cliqué. Début du combat.")
-    result = play_combat()
-    _handle_post_combat()
+    logging.info("Deuxième clic post-combat effectué après 3 secondes.")
+    return True
 
-  logging.info("Aucun nouveau 'Réessayer' détecté, fin de la boucle de combat.")
-  return result
 
-def play_combat():
-  """Launch the original LoR bot combat loop from LoR-Bot/code/LOR_Bot.py."""
-  project_root = Path(__file__).resolve().parent
-  script_path = project_root / "LoR-Bot" / "code" / "LOR_Bot.py"
+def play_combat(**options):
+    """
+    Joue un combat entier avec notre boucle autonome.
 
-  if not script_path.exists():
-    raise FileNotFoundError(f"Combat script not found: {script_path}")
+    Renvoie le CombatReport : `finished`, `won`, `turns_played`,
+    `reason`... L'import est fait ici et non en tête de fichier pour que
+    navigate.py reste importable même si une dépendance de combat manque.
+    """
+    from combat import CombatLoop
 
-  # Run from the script directory so local imports in LOR_Bot.py keep working.
-  completed = subprocess.run(
-    [sys.executable, str(script_path)],
-    cwd=str(script_path.parent),
-    check=False,
-  )
+    report = CombatLoop(**options).run()
+    logging.info("Combat terminé — %s", report.summary())
+    return report
 
-  if completed.returncode != 0:
-    raise RuntimeError(f"Combat script exited with code {completed.returncode}")
 
-  return "Combat finished"
+def try_combat(node_x, node_y, **options):
+    """
+    Joue le combat, puis gère les éventuels réessais ('retry') jusqu'à
+    validation.
+    """
+    report = play_combat(**options)
+
+    if not _handle_post_combat():
+        return report
+
+    while click_button("retry", timeout=5):
+        logging.info("Bouton 'Réessayer' cliqué.")
+        time.sleep(3)
+        human_click(node_x, node_y)
+        time.sleep(random.uniform(1.5, 2.5))
+
+        if not click_button("combat_button"):
+            continue
+
+        logging.info("Bouton Combat cliqué. Début du combat.")
+        report = play_combat(**options)
+        _handle_post_combat()
+
+    logging.info("Aucun nouveau 'Réessayer' détecté, fin de la boucle de combat.")
+    return report

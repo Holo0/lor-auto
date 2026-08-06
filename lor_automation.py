@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+lor_automation.py
 
-import time
+Point d'entrée : navigue dans le défi hebdomadaire et enchaîne les
+combats.
+
+Le combat lui-même est joué par combat.CombatLoop, atteint via
+navigate.py -> lor_battle.try_combat.
+"""
+
 import logging
+import time
+
 import pyautogui
 
-# Modules externes (vision)
-from lor_battle import play_combat
 from navigate import navigate_weekly_challenge
 
 # ============================================================
@@ -21,38 +29,20 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 
-# ============================================================
-# NAVIGATION DANS L’AVENTURE
-# ============================================================
+# Le dossier "assets/nodes" doit contenir UNIQUEMENT les images des nodes
+# aléatoires possibles (normal_node.png, normal_node1.png, ...), séparées
+# des boutons et des boss pour éviter les faux positifs de matching.
+NODES_DIR = "assets/nodes"
 
-def run_adventure_navigation_loop():
-    logging.info("Début de la navigation dans l'aventure...")
-
-# ============================================================
-# MAIN
-# ============================================================
 
 def main():
     logging.info("Lancement du bot Legends of Runeterra...")
     time.sleep(1)
 
-    # Aller au défi mensuel
-    # click_button("monthly_challenge")
-    # click_button("active_encounter")
-
-    # # Choisir le champion
-    # click_button("first_champion")
-
-    # # Lancer l’aventure
-    # click_button("use_attempt")
-
-    # Navigation
-    # Le dossier "assets/nodes" doit contenir UNIQUEMENT les images des
-    # nodes aléatoires possibles (node_type_1.png, node_type_2.png, ...),
-    # séparées des boutons/boss pour éviter les faux positifs de matching.
-    navigate_weekly_challenge("assets/nodes")
+    navigate_weekly_challenge(NODES_DIR)
 
     logging.info("Fin de l'aventure.")
+
 
 if __name__ == "__main__":
     main()
