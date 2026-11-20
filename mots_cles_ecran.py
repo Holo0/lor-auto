@@ -28,7 +28,11 @@ ci-dessous), nettes et franches sur fond noir.
 CE QUI EST MESURÉ, ET CE QUI NE L'EST PAS
 -----------------------------------------
 Sur la seule scène étiquetée dont on dispose — sept unités dont les
-mots-clés imprimés sont connus par `card_sets` :
+mots-clés imprimés sont connus par `card_sets`. **Compté le 20/11/2026,
+APRÈS le recollage par colonnes** (`_colonnes`), et revérifié ligne à
+ligne le 20/11 au soir : les deux lignes que le recollage a changées
+sont Swain (4 → 5) et Firespitter (3 → 1) ; les cinq autres n'ont jamais
+bougé.
 
       unité                   imprimés   icônes détectées
       Swain (Fearsome)            1            5
@@ -85,8 +89,11 @@ test_un_glyphe_etranger_nest_identifie_comme_rien`).
 
 CE QUE ÇA PERMET DÉJÀ. Une unité SANS mot-clé imprimé qui porte une
 icône a forcément été RENFORCÉE en jeu — et c'est observé : Legion
-Saboteur (01NX040, `keywords=[]`) porte une icône bleue. C'est le seul
-verdict que ce module rend, et il est sans ambiguïté.
+Saboteur (01NX040, `keywords=[]`) porte une icône bleue. C'était le seul
+verdict de ce module jusqu'au 20/11 ; `identifier()` en rend désormais
+un second, plus fort — le NOM du mot-clé — mais seulement pour les
+quatre dont on a un gabarit. Celui-ci reste le plus robuste des deux :
+il ne demande aucun gabarit, et il est sans ambiguïté.
 
 PIÈGES MESURÉS ET ÉCARTÉS
 -------------------------
@@ -111,6 +118,8 @@ quatre mots-clés, avec Firespitter (14/11) en validation croisée.
 
 from __future__ import annotations
 
+import logging
+import sys
 from pathlib import Path
 from typing import Iterable
 
@@ -118,6 +127,12 @@ import cv2
 import numpy as np
 
 import digits
+
+# UNE DÉGRADATION MUETTE EST LE PIRE DÉFAUT DU PROJET. Ce module peut
+# cesser de rendre un mot-clé sans que rien ne casse : gabarit sans
+# alpha, dossier `mots_cles/` vidé, bande décalée. Tout ce qui le fait
+# RETOMBER sur le comportement d'avant passe donc par ce logger.
+LOGGER = logging.getLogger(__name__)
 
 # La barre d'icônes, en coordonnées relatives à `card.center`. Mesurée
 # sur les trois unités porteuses de la capture de référence ; les bornes
@@ -326,9 +341,16 @@ def porte_des_mots_cles(image, centre: tuple) -> bool:
     """
     Cette unité affiche-t-elle AU MOINS un mot-clé ?
 
-    C'est le seul verdict que le compte d'icônes permette : il est juste
-    sur les sept unités de la capture de référence, là où le nombre
-    exact varie de ±1.
+    C'EST LE VERDICT LE MOINS CHER ET LE MIEUX ÉTABLI : juste sur les
+    sept unités de la capture du 14/11 (trois porteuses, quatre vierges),
+    et il ne demande aucun gabarit.
+
+    Le COMPTE, lui, est exact partout où l'on connaît la vérité — les
+    cinq Pâle orchestre du 20/11, quatre icônes pour les quatre mots-clés
+    étiquetés par Ewan — mais cette vérité n'existe que là : sur la scène
+    du 14/11, personne ne sait combien de mots-clés Swain porte vraiment,
+    donc ses 5 icônes ne sont ni confirmées ni réfutées. On ne bâtit donc
+    rien sur le nombre (cf. `a_recu_un_mot_cle`).
     """
     return bool(icones(image, centre))
 
@@ -341,8 +363,11 @@ def a_recu_un_mot_cle(image, carte) -> bool:
     mot-clé dans `card_sets` et une icône s'affiche quand même. Observé
     sur Legion Saboteur (01NX040, `keywords=[]`, une icône bleue).
 
-    ON NE COMPARE PAS LES NOMBRES au-delà de ça : le compte est à ±1, et
-    « 4 icônes pour 1 mot-clé imprimé » ne prouverait pas trois dons.
+    ON NE COMPARE PAS LES NOMBRES au-delà de ça. Même depuis que le
+    recollage rend un compte exact là où on connaît la vérité (les cinq
+    Pâle orchestre du 20/11), « 5 icônes pour 1 mot-clé imprimé » ne
+    prouverait pas quatre dons : l'écran ne montre que ce qu'il DESSINE,
+    et rien ne dit qu'un mot-clé imprimé ait toujours son icône.
     """
     imprimes = tuple(getattr(carte, "keywords", ()) or ())
     refs = tuple(getattr(carte, "keyword_refs", ()) or ())
@@ -366,17 +391,34 @@ def cartes_renforcees(image, cartes: Iterable) -> set:
 # LES SEUILS SONT MESURÉS POUR CE PROBLÈME, pas hérités (20/11/2026).
 # `digits.CONFIDENT_SCORE` (0.72) a été calibré pour les CHIFFRES : dix
 # classes de formes voisines. Ici les pictogrammes sont très distincts et
-# c'est la MARGE qui discrimine. Mesuré sur les 5 Pâle orchestre du 20/11
-# et les glyphes ÉTRANGERS de la scène du 14/11 :
+# c'est la MARGE qui discrimine.
 #
-#     vrais positifs   score 0.710 à 0.988 | marge 0.119 à 0.630
-#     glyphes étrangers score <= 0.429     | marge <= 0.073
+# MESURE À JOUR (20/11/2026 au soir, DEUX variantes par mot-clé — les 21
+# vrais positifs sont les 5 Pâle orchestre × 4 icônes plus le Challenger
+# imprimé de Firespitter ; les 5 étrangers sont les icônes de Swain) :
+#
+#     vrais positifs    score 0.710 à 1.000 | marge 0.317 à 0.640
+#     glyphes étrangers score <= 0.409      | marge <= 0.073
+#
+# La plage de marge « 0.119 à 0.630 » qui figurait ici datait d'AVANT le
+# second gabarit par mot-clé : elle annonçait 0.019 de sécurité là où il
+# y en a 0.217. Mesure refaite, ancienne plage supprimée.
 #
 # Le score reste indispensable : seul lui peut refuser un mot-clé dont on
-# n'a AUCUN gabarit. 0.60 laisse 0.11 sous le pire vrai positif et 0.17
-# au-dessus du meilleur étranger. Les DEUX planchers doivent être franchis.
-SCORE_SUR = digits.MIN_SCORE              # 0.60
-MARGE_SURE = digits.CONFIDENT_MARGIN      # 0.10
+# n'a AUCUN gabarit. 0.60 laisse 0.11 sous le pire vrai positif et 0.19
+# au-dessus du meilleur étranger ; 0.10 laisse 0.217 sous la pire vraie
+# marge et 0.027 au-dessus de la meilleure marge étrangère. Les DEUX
+# planchers doivent être franchis.
+#
+# ÉCRITS EN DUR, ET C'EST VOULU. Ce sont aujourd'hui les mêmes valeurs
+# que `digits.MIN_SCORE` / `digits.CONFIDENT_MARGIN` — mais prises à DEUX
+# paliers différents de `digits` (le palier « candidat » pour l'un, le
+# palier « sûr » pour l'autre), un assemblage qui n'a de sens que pour
+# les chiffres. Les rebrancher ferait bouger EN SILENCE le plancher qui
+# empêche d'inventer un Challenger le jour où quelqu'un règle `digits`
+# (trois fois en novembre). Ne pas rebrancher : mesurer ici.
+SCORE_SUR = 0.60
+MARGE_SURE = 0.10
 
 _GABARITS: dict = {}
 
@@ -404,6 +446,17 @@ def charger_gabarits() -> dict:
     Le score d'un mot-clé est celui de sa MEILLEURE variante ; la marge se
     mesure entre deux mots-clés DIFFÉRENTS, jamais entre deux variantes du
     même. C'est mot pour mot la règle de `digits.match_glyph`.
+
+    RIEN N'EST ÉCARTÉ EN SILENCE (20/11/2026). Un PNG ré-enregistré par un
+    éditeur qui aplatit l'alpha disparaissait du lot sans un mot, et
+    `identifier` cessait de rendre ce mot-clé-là : c'est littéralement le
+    défaut du 08/11 (« le gabarit était écrit, puis IGNORÉ au chargement,
+    sans un mot »). Les deux refus sont désormais journalisés.
+
+    ET ON N'ACCEPTE QUE LES FAMILLES DE `NOMS`. N'importe quel PNG à alpha
+    déposé là devenait une classe candidate : il ne peut rien gagner (son
+    nom n'est pas un mot-clé de `card_sets`) mais il CONSOMME de la marge,
+    et peut faire passer un vrai glyphe sous le plancher.
     """
     if _GABARITS:
         return _GABARITS
@@ -411,9 +464,22 @@ def charger_gabarits() -> dict:
     for png in sorted(dossier.glob("*.png")):
         brut = cv2.imread(str(png), cv2.IMREAD_UNCHANGED)
         if brut is None or brut.ndim < 3 or brut.shape[2] < 4:
+            LOGGER.warning(
+                "Gabarit de mot-clé ignoré, pas de canal alpha : %s — "
+                "l'alpha porte la forme, un glyphe opaque ne vaut rien.",
+                png.name,
+            )
             continue
         famille = _famille(png.stem)
-        nom = NOMS.get(famille, famille)
+        if famille not in NOMS:
+            LOGGER.warning(
+                "Gabarit de mot-clé ignoré, famille inconnue : %s "
+                "(familles connues : %s) — une classe de plus consomme de "
+                "la marge sans pouvoir rien nommer.",
+                png.name, ", ".join(sorted(NOMS)),
+            )
+            continue
+        nom = NOMS[famille]
         _GABARITS.setdefault(nom, []).append((brut[:, :, 3] >= 128).astype(np.uint8))
     return _GABARITS
 
@@ -440,7 +506,19 @@ def identifier(image, centre: tuple) -> tuple:
     chiffrage et la mesure du coût avant/après (tâche 3, 20/11/2026).
     """
     gabarits = charger_gabarits()
-    if not gabarits:
+    # UNE MARGE A BESOIN DE DEUX CANDIDATS. Avec une seule famille
+    # chargée, `second` vaudrait 0.0, la marge vaudrait le score, et le
+    # second plancher ne filtrerait plus rien — alors que tout le module
+    # repose sur « les DEUX planchers doivent être franchis ». Ça ne peut
+    # pas arriver aujourd'hui (quatre familles), mais rien ne le disait :
+    # un `mots_cles/` à moitié vidé aurait fait inventer un mot-clé.
+    if len(gabarits) < 2:
+        if gabarits:
+            LOGGER.warning(
+                "Identification des mots-clés désactivée : %d famille(s) de "
+                "gabarits chargée(s), il en faut au moins 2 pour qu'une "
+                "marge veuille dire quelque chose.", len(gabarits),
+            )
         return ()
     boites, masque = _icones_et_masque(image, centre)
     if masque is None:
@@ -452,8 +530,130 @@ def identifier(image, centre: tuple) -> tuple:
             continue
         notes = sorted(((max(_score(glyphe, v) for v in variantes), nom)
                         for nom, variantes in gabarits.items()), reverse=True)
-        meilleur = notes[0]
-        second = notes[1] if len(notes) > 1 else (0.0, "")
+        meilleur, second = notes[0], notes[1]
         if meilleur[0] >= SCORE_SUR and meilleur[0] - second[0] >= MARGE_SURE:
             trouves.append(meilleur[1])
     return tuple(trouves)
+
+
+# ============================================================
+# DIAGNOSTIC — « que lit-on sous chaque unité ? »
+# ============================================================
+# `champions.py <capture>`, `bilan.py <capture>` et `spells.py explain`
+# ont tous leur point d'entrée ; celui-ci manquait, et `cut_icone` — le
+# SEUL outil de récolte de gabarits — n'était atteignable que par
+# `python -c`. C'est pourtant par lui que passeront les seize mots-clés
+# qui n'en ont pas encore.
+USAGE = """\
+Que lit-on sous les unités d'un plateau ?
+
+    python mots_cles_ecran.py                       écran en direct (API + capture)
+    python mots_cles_ecran.py <capture.png>         une capture et sa trame .json appariée
+    python mots_cles_ecran.py <capture.png> <x> <y> un centre d'unité donné à la main
+    python mots_cles_ecran.py cut-icone <capture.png> <x> <y> <index> <nom>
+
+`cut-icone` récolte un gabarit : l'INDEX est celui qu'affiche la
+commande sans argument, le NOM est celui d'Ewan — on ne récolte que ce
+qu'un humain a nommé.\
+"""
+
+
+def unites_de_la_trame(trame: dict, window=None) -> list:
+    """
+    Les cartes d'une trame `/positional-rectangles` : [(CardCode, centre)].
+
+    ON NE REFAIT PAS LE CLASSEMENT EN ZONES ICI. `game_state.group_by_zone`
+    en est la source unique, et l'importer d'ici importerait une SECONDE
+    COPIE de ce module-ci (ce fichier étant alors `__main__`) — le piège
+    du 10/11. On rend donc TOUTES les cartes, main comprise : une carte
+    en main n'a pas de barre d'icônes, elle sort à zéro, et le diagnostic
+    le montre au lieu de la cacher.
+    """
+    import lor_api
+
+    if window is None:
+        ecran = (trame or {}).get("Screen") or {}
+        window = lor_api.Window(0, 0, int(ecran.get("ScreenWidth") or 1920),
+                                int(ecran.get("ScreenHeight") or 1080))
+    unites = []
+    for rect in (trame or {}).get("Rectangles") or ():
+        if rect.get("CardCode") in (None, "face"):
+            continue
+        unites.append((rect["CardCode"], lor_api.rect_center_screen(rect, window)))
+    return unites
+
+
+def _rapport(image, unites) -> None:
+    """Ce que l'écran dit de chaque unité — boîtes comprises, parce que
+    c'est leur INDEX que `cut-icone` demande."""
+    for code, centre in unites:
+        boites = icones(image, centre)
+        noms = identifier(image, centre)
+        print(f"  {code:<12} centre {str(centre):<14} {len(boites)} icône(s)")
+        for i, (x, y, w, h, aire) in enumerate(boites):
+            nom = noms[i] if i < len(noms) and len(noms) == len(boites) else "?"
+            print(f"       [{i}] x={x:<4} y={y:<4} {w}×{h} (aire {aire})   {nom}")
+        if noms and len(noms) != len(boites):
+            # Un glyphe sous les planchers n'est PAS identifié : le tuple
+            # est plus court que la liste des boîtes, et on ne sait plus
+            # dire laquelle est laquelle. On le dit, on ne l'invente pas.
+            print(f"       identifiés (sans correspondance sûre) : {', '.join(noms)}")
+
+
+def main(argv=None) -> int:
+    # Ce rapport imprime des « × » et des accents : redirigé dans un
+    # fichier ou un tube, Python retombe sur cp1252 et MEURT dessus. Cf.
+    # `sortie_utf8.py`, point unique de la parade — on l'applique AVANT
+    # la première impression, comme `game_state.main` et `combat.main`.
+    import sortie_utf8
+    sortie_utf8.appliquer()
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] in ("-h", "--help"):
+        print(USAGE)
+        return 0
+
+    if argv and argv[0] == "cut-icone":
+        if len(argv) != 6:
+            print(USAGE)
+            return 1
+        capture, x, y, index, nom = argv[1], *argv[2:6]
+        print(cut_icone(capture, (int(x), int(y)), int(index), nom))
+        return 0
+
+    if argv:
+        image = cv2.imread(argv[0])
+        if image is None:
+            print(f"Capture illisible : {argv[0]}")
+            return 1
+        if len(argv) >= 3:
+            unites = [("(donné)", (int(argv[1]), int(argv[2])))]
+        else:
+            # LA TRAME APPARIÉE, OU RIEN. Deviner où sont les unités sur
+            # une capture, c'est exactement ce que ce module refuse de
+            # faire des icônes.
+            trame = Path(argv[0]).with_suffix(".json")
+            if not trame.exists():
+                print(f"Pas de trame appariée ({trame.name}) : donnez un centre "
+                      f"d'unité à la main.\n\n{USAGE}")
+                return 1
+            import json
+            unites = unites_de_la_trame(json.loads(trame.read_text("utf-8")))
+    else:
+        import lor_api
+        trame = lor_api.get_positional_rectangles()
+        image = lor_api.capture_screen_bgr()
+        if image is None:
+            print("Aucune capture d'écran.")
+            return 1
+        unites = unites_de_la_trame(trame, lor_api.get_window(trame))
+
+    familles = charger_gabarits()
+    print(f"{len(unites)} carte(s), {len(familles)} mot(s)-clé(s) avec gabarit : "
+          f"{', '.join(sorted(familles)) or 'aucun'}")
+    _rapport(image, unites)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

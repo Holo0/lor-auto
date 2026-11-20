@@ -22,18 +22,26 @@ CAPTURE = Path(__file__).parent / "captures_reference" / "unite_stun_20261114_23
 CAPTURE_20 = (Path(__file__).parent / "captures_reference" / "mots_cles"
               / "scene_20261120_201157.png")
 
-# Pâle orchestre (06SI009), rect écran x 582-709 / y 820-980.
-# L'ordre est un FAIT DE JEU donné par Ewan le 20/11/2026 : « chacun des
-# Pâle orchestre a dans l'ordre, de gauche à droite, le mot clé éphémère,
-# sanctification, challenger et enfin surpuissance ».
-CENTRE_ORCHESTRE = (645, 900)
-
-# Les CINQ Pâle orchestre de la même scène (`scene_20261120_201157.json`,
-# CardCode 06SI009), centres recalculés par `lor_api.rect_center_screen` —
-# pas une approximation à l'œil. La même carte, posée cinq fois : si le
-# masque se fragmente pareil sur les cinq, c'est que le découpage est une
-# propriété du GLYPHE, pas un accident d'une seule vignette.
+# Les CINQ Pâle orchestre (06SI009) de la même scène
+# (`scene_20261120_201157.json`), centres recalculés par
+# `lor_api.rect_center_screen` — pas une approximation à l'œil. La même
+# carte, posée cinq fois : si le masque se fragmente pareil sur les cinq,
+# c'est que le découpage est une propriété du GLYPHE, pas un accident
+# d'une seule vignette. Rect écran de la première : x 582-709 / y 820-980.
+#
+# L'ordre des icônes est un FAIT DE JEU donné par Ewan le 20/11/2026 :
+# « chacun des Pâle orchestre a dans l'ordre, de gauche à droite, le mot
+# clé éphémère, sanctification, challenger et enfin surpuissance ».
 CENTRES_ORCHESTRE = [(645, 900), (802, 900), (959, 900), (1115, 900), (1272, 900)]
+
+# LA DISTINCTION EST STRUCTURELLE, PAS ORTHOGRAPHIQUE (20/11/2026, revue
+# finale). Les deux listes ne se distinguaient que par un « S » final, et
+# la première était la SOURCE des gabarits : un futur test qui s'en
+# servirait pour `identifier()` comparerait un gabarit à son propre
+# découpage — 1.0 par construction, qui ne prouve rien. On découpe donc
+# la liste unique, et le nom dit à quoi chaque moitié sert.
+SOURCES_GABARITS = CENTRES_ORCHESTRE[:2]      # (645, 900) et (802, 900)
+AUTRES_ORCHESTRES = CENTRES_ORCHESTRE[2:]     # les trois qui PROUVENT quelque chose
 
 FAILURES: list = []
 
@@ -206,7 +214,7 @@ def test_le_sablier_magenta_entre_dans_le_masque():
     if img is None:
         check("capture du 20/11 présente", False, CAPTURE_20)
         return
-    lues = mce.icones(img, CENTRE_ORCHESTRE)
+    lues = mce.icones(img, CENTRES_ORCHESTRE[0])
     check("quatre icônes sous le Pâle orchestre", len(lues) == 4,
           f"lu {len(lues)} : {lues}")
     if len(lues) == 4:
@@ -257,9 +265,33 @@ def test_un_glyphe_fragmente_se_recolle_entier():
     # recoller la colonne entière donnerait une boîte > ICONE_COTE_MAX,
     # refusée — c'est ce refus qui laisse son glyphe réel (22×20) compter
     # tout seul, plutôt que de faire disparaître les deux.
-    check("Firespitter garde son glyphe malgré la tache voisine",
-          mce.icones(img14, (880, 900)) == [(84, 20, 22, 20, 204)],
-          mce.icones(img14, (880, 900)))
+    #
+    # ON ASSERTE LA PROPRIÉTÉ, PAS LE TUPLE (20/11/2026, revue finale).
+    # Ce test gravait `[(84, 20, 22, 20, 204)]` : l'origine exacte et
+    # l'aire sont des incidents de SEGMENTATION, et élargir une famille
+    # de couleur ou toucher à `FRAGMENT_AIRE_MIN` les aurait fait rougir
+    # sans que rien de ce qu'il garde ait bougé — le motif qui a mordu le
+    # projet quatre fois (`test_restrictions_levees`, `test_recovered_
+    # screen_resets_the_counter`, `RESERVED_FAMILIES`, le Joker). Ce
+    # qu'on garde : UN glyphe, et de taille plausible. L'aire reste dans
+    # le `detail`, pour la lire le jour où ça rougit.
+    lues = mce.icones(img14, (880, 900))
+    check("Firespitter garde UN seul glyphe malgré la tache voisine",
+          len(lues) == 1, lues)
+    if len(lues) == 1:
+        x, y, w, h, aire = lues[0]
+        check("   et ce glyphe a une taille de glyphe",
+              mce._est_un_glyphe(w, h, aire), lues)
+        # La tache de bordure fait 40×30 : si la fusion était passée, la
+        # boîte dépasserait ICONE_COTE_MAX. C'est ce que le garde refuse.
+        check("   il n'a pas avalé la tache de bordure (40×30)",
+              w <= mce.ICONE_COTE_MAX and h <= mce.ICONE_COTE_MAX, lues)
+
+    # LE 5e GLYPHE DE SWAIN est l'un des deux effets annoncés du
+    # recollage (4 → 5) ; il n'était vérifié nulle part. L'autre moitié,
+    # Firespitter (3 → 1), l'est juste au-dessus.
+    check("Swain : cinq icônes, le 5e glyphe recollé compris",
+          len(mce.icones(img14, (724, 900))) == 5, mce.icones(img14, (724, 900)))
     # Les quatre vierges restent à zéro — la propriété qui porte tout le
     # module ne doit RIEN céder à un recollage plus permissif.
     for nom, centre in (("Arachnoid Sentry", (1194, 900)),
@@ -268,13 +300,6 @@ def test_un_glyphe_fragmente_se_recolle_entier():
                          ("Imperial Demolitionist", (1115, 180))):
         check(f"{nom} reste vierge malgré le recollage par colonne",
               mce.icones(img14, centre) == [], mce.icones(img14, centre))
-
-
-# Les vignettes qui n'ont PAS servi de source. Les gabarits sont récoltés
-# sur (645, 900) et (802, 900) ; tester sur l'une d'elles serait comparer
-# un gabarit à son propre découpage — 1.0 par construction, qui ne
-# prouve rien.
-AUTRES_ORCHESTRES = ((959, 900), (1115, 900), (1272, 900))
 
 
 def test_les_quatre_icones_sont_identifiees():
@@ -355,6 +380,59 @@ def test_un_gabarit_franchit_les_captures():
           mce.identifier(img, (880, 900)))
 
 
+def test_le_decoupage_suit_le_chemin_de_lecture():
+    """
+    `decouper()` EST LE SEUL CHEMIN QUI ÉCRIT DES GABARITS, et il n'avait
+    aucun test direct.
+
+    Depuis le correctif de performance, elle n'est plus appelée que par
+    `cut_icone` — `identifier()` tranche lui-même dans le masque qu'il
+    vient de calculer. Si les deux dérivent, on fabrique des gabarits qui
+    ne se reconnaissent pas eux-mêmes : c'est mot pour mot le piège du
+    08/11 (`cut_defi`, IoU 0.83 contre son propre gabarit, marge sous le
+    plancher) que la docstring de `cut_icone` invoque.
+
+    Trois propriétés, aucune valeur gravée : la découpe a la forme de la
+    boîte, elle se reconnaît elle-même, et elle est 0/255 — donc la
+    relecture par `alpha >= 128` ne perd rien.
+    """
+    print("\nLe découpage d'un gabarit suit le chemin de lecture")
+    img = cv2.imread(str(CAPTURE_20))
+    img14 = cv2.imread(str(CAPTURE))
+    if img is None or img14 is None:
+        check("captures de référence présentes", False, (CAPTURE_20, CAPTURE))
+        return
+
+    for etiquette, image, centre in (("Pâle orchestre", img, CENTRES_ORCHESTRE[0]),
+                                     ("Firespitter", img14, (880, 900))):
+        boites = mce.icones(image, centre)
+        check(f"{etiquette} : au moins un glyphe à découper", bool(boites), boites)
+        for index, (_, _, w, h, _) in enumerate(boites):
+            masque = mce.decouper(image, centre, index)
+            check(f"   [{index}] la découpe a la forme de la boîte ({h}, {w})",
+                  masque is not None and masque.shape == (h, w),
+                  None if masque is None else masque.shape)
+            if masque is None:
+                continue
+            check(f"   [{index}] elle se reconnaît elle-même (score 1.0)",
+                  abs(mce._score(masque, masque) - 1.0) < 1e-9,
+                  mce._score(masque, masque))
+            # L'alpha écrit par `cut_icone` est ce masque tel quel, et
+            # `charger_gabarits` le relit par `>= 128` : un masque qui ne
+            # serait pas binaire perdrait des pixels EN SILENCE.
+            valeurs = set(int(v) for v in set(masque.ravel()))
+            check(f"   [{index}] masque binaire, relisible par >= 128",
+                  valeurs <= {0, 255}, sorted(valeurs))
+
+    boites = mce.icones(img, CENTRES_ORCHESTRE[0])
+    check("un indice hors des boîtes ne rend rien",
+          mce.decouper(img, CENTRES_ORCHESTRE[0], len(boites)) is None)
+    check("un indice négatif non plus",
+          mce.decouper(img, CENTRES_ORCHESTRE[0], -1) is None)
+    check("une image illisible non plus",
+          mce.decouper(None, CENTRES_ORCHESTRE[0], 0) is None)
+
+
 def main():
     for test in (test_la_barre_se_lit_la_ou_elle_est,
                  test_un_mot_cle_accorde_se_voit,
@@ -365,7 +443,8 @@ def main():
                  test_les_quatre_icones_sont_identifiees,
                  test_une_unite_sans_icone_nidentifie_rien,
                  test_un_glyphe_etranger_nest_identifie_comme_rien,
-                 test_un_gabarit_franchit_les_captures):
+                 test_un_gabarit_franchit_les_captures,
+                 test_le_decoupage_suit_le_chemin_de_lecture):
         test()
     print()
     if FAILURES:

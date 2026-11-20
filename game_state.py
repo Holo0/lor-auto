@@ -1340,6 +1340,25 @@ def badge_cache_info() -> tuple:
 # pas comme clés de ce dict : ne pas « corriger » vers `attack_row`.
 ZONES_DE_PLATEAU = ("board", "attack", "enemy_board", "enemy_attack")
 
+# L'INTERRUPTEUR DE REPLI, comme toute lecture d'écran neuve du projet
+# (`MARQUEUR_LOSANGE`, `ATTENTE_ADAPTATIVE`, `CANCEL_WITH_LEFT_CLICK`,
+# `--sans-ocr`). Trois des quatre mots-clés branchés ne sont PAS inertes :
+# Challenger décide de la légalité d'un blocage, Overwhelm change
+# l'excédent d'une attaque, Ephemeral pilote `dies_anyway` (sacrifices,
+# mulligan, choix d'une receveuse). Et cette lecture n'a JAMAIS tourné en
+# jeu. Si une icône inconnue se met à noter 0.62 avec 0.11 de marge sur un
+# plateau réel, on revient au comportement d'avant en une ligne, sans
+# éditer la fonction en pleine session.
+MOTS_CLES_ECRAN = True
+
+# CardID + mot-clé déjà journalisés, pour ne dire chaque lecture qu'UNE
+# fois — le modèle de `CombatLoop._note_level_ups`, qui garde le même
+# genre de jeu pour ne pas répéter un level-up à chaque instantané. Sans
+# ça, la ligne serait réécrite toutes les ~2 s par unité et noierait le
+# log ; avec, on peut relire dans `logs/` ce que l'écran a vraiment lu —
+# c'est ce qui permettra de lever la dette « pas encore vu tourner ».
+_MOTS_CLES_JOURNALISES: set = set()
+
 
 def lire_les_mots_cles(screen, zones: dict) -> int:
     """
@@ -1351,6 +1370,15 @@ def lire_les_mots_cles(screen, zones: dict) -> int:
 
     Ne lève jamais : une lecture impossible laisse le tuple vide, et vide
     veut dire « on n'a pas regardé ».
+
+    Rend le NOMBRE d'unités enrichies — un compte pour les tests et le
+    diagnostic, pas le journal : chaque lecture est dite une fois par
+    (CardID, mot-clé) par `_journaliser_mots_cles`, seul endroit qui
+    connaisse à la fois la carte et ce qu'on a lu d'elle.
+
+    `MOTS_CLES_ECRAN = False` rend 0 sans rien lire : tout le plateau
+    retombe alors sur les mots-clés IMPRIMÉS, le comportement d'avant le
+    20/11/2026.
 
     COÛT MESURÉ (20/11/2026), sur `captures_reference/mots_cles/
     scene_20261120_201157.png`, 5 centres d'unité, commande :
@@ -1377,7 +1405,7 @@ def lire_les_mots_cles(screen, zones: dict) -> int:
     2,7 % avant correctif. Le seuil de 50 ms visait à attraper une
     surprise d'un ORDRE DE GRANDEUR (500 ms), pas à bloquer à 51-57 ms.
     """
-    if screen is None:
+    if screen is None or not MOTS_CLES_ECRAN:
         return 0
     enrichies = 0
     for nom in ZONES_DE_PLATEAU:
@@ -1393,7 +1421,36 @@ def lire_les_mots_cles(screen, zones: dict) -> int:
             if lus:
                 carte.keywords_lus = lus
                 enrichies += 1
+                _journaliser_mots_cles(carte, lus)
     return enrichies
+
+
+def _journaliser_mots_cles(carte, lus: tuple) -> None:
+    """
+    Dire au log ce que l'écran a lu, UNE FOIS par (CardID, mot-clé).
+
+    SANS ÇA LA LECTURE EST MUETTE, et c'est le pire défaut du projet :
+    bande décalée, seuils qui ne mordent plus, `mots_cles/` vidé — le bot
+    retombe sur son comportement d'avant sans un mot, et la dette « pas
+    encore vu tourner en jeu » devient impossible à lever puisqu'il n'y
+    aurait rien à relire dans `logs/`.
+
+    On ne journalise que ce qui N'EST PAS IMPRIMÉ quand c'est possible :
+    un mot-clé déjà dans `card_sets` n'apprend rien, un mot-clé ACCORDÉ
+    est tout l'objet du module. Les deux sont dits, mais pas pareil.
+    """
+    imprimes = {_normalize_keyword(k)
+                for k in (*carte.keywords, *carte.keyword_refs)}
+    for mot in lus:
+        cle = (carte.card_id, mot)
+        if cle in _MOTS_CLES_JOURNALISES:
+            continue
+        _MOTS_CLES_JOURNALISES.add(cle)
+        if _normalize_keyword(mot) in imprimes:
+            LOGGER.info("Écran : %s porte bien son %s imprimé.", carte.name, mot)
+        else:
+            LOGGER.info("Écran : %s a reçu %s (absent de card_sets).",
+                        carte.name, mot)
 
 
 def enrich_with_live_stats(
@@ -2095,6 +2152,9 @@ class GameStateReader:
             return GameSnapshot(phase=Phase.MULLIGAN, **base)
 
         screen = lor_api.capture_screen_bgr()
+        # Le compte rendu n'est pas lu ici : chaque mot-clé lu est
+        # journalisé là où la carte est connue (`_journaliser_mots_cles`),
+        # une fois par (CardID, mot-clé). Rien ne se perd en silence.
         lire_les_mots_cles(screen, zones)
         orb_active = turn_orb_is_active(screen, window)
         base["turn_orb_active"] = orb_active

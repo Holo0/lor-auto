@@ -938,6 +938,64 @@ def test_un_mot_cle_lu_ne_retire_jamais_un_imprime():
     check("l'imprimé survit à une lecture vide", carte.has("CantBlock"))
 
 
+def test_la_lecture_decran_est_vraiment_branchee():
+    """
+    UN MODULE PEUT ÊTRE PARFAIT ET N'ÊTRE BRANCHÉ NULLE PART (10/11/2026).
+
+    Les deux tests ci-dessus posent `keywords_lus` À LA MAIN : ils
+    décrivent ce que `has()` en fait, jamais le fait que `snapshot()`
+    aille lire l'écran. Restaient donc sans aucun filet : les clés de
+    `ZONES_DE_PLATEAU` (dont le commentaire avertit qu'on pourrait les
+    « corriger » vers `attack_row` et tout casser EN SILENCE), le fait
+    que les `BoardCard` passées à `lire_les_mots_cles` soient bien les
+    objets que `snapshot.board` rend, et la place de l'appel après la
+    sortie du mulligan.
+
+    On bouchonne `identifier` — la seule couture vers l'image — et on
+    regarde ce qui ressort du bout de la chaîne.
+    """
+    print("\nLa lecture d'écran est branchée dans snapshot()")
+    board = rect_at_ratio(0.15, code="UNIT_B", card_id=2)
+    install_fakes(nexus_rects() + [board])
+
+    vrai = game_state.mots_cles_ecran.identifier
+    vus = []
+
+    def bouchon(image, centre):
+        vus.append(centre)
+        return ("Challenger",)
+
+    game_state.mots_cles_ecran.identifier = bouchon
+    try:
+        snap = reader().snapshot()
+    finally:
+        game_state.mots_cles_ecran.identifier = vrai
+
+    carte = snap.board[0]
+    check("l'écran a été interrogé sous l'unité du banc",
+          vus == [carte.center], (vus, carte.center))
+    check("le mot-clé lu arrive sur la carte de l'instantané",
+          carte.keywords_lus == ("Challenger",), carte.keywords_lus)
+    check("et `has` le voit", carte.has("Challenger"))
+    check("l'imprimé est toujours là", carte.has("Elusive"))
+
+    # L'INTERRUPTEUR DE REPLI DOIT VRAIMENT REPLIER. Il n'a d'intérêt que
+    # le jour où on le bascule en pleine session : s'il ne coupait pas,
+    # on n'aurait aucun moyen de revenir au comportement d'avant.
+    vus.clear()
+    game_state.mots_cles_ecran.identifier = bouchon
+    game_state.MOTS_CLES_ECRAN = False
+    try:
+        coupe = reader().snapshot().board[0]
+    finally:
+        game_state.MOTS_CLES_ECRAN = True
+        game_state.mots_cles_ecran.identifier = vrai
+
+    check("interrupteur à False : l'écran n'est pas lu", vus == [], vus)
+    check("   et la carte reste sur ses mots-clés imprimés",
+          coupe.keywords_lus == () and coupe.has("Elusive"), coupe.keywords_lus)
+
+
 def test_live_stats_override_base():
     print("\nStats réelles contre stats de base")
 
@@ -1407,6 +1465,7 @@ def main():
         test_card_model,
         test_un_mot_cle_lu_a_lecran_complete_la_carte_imprimee,
         test_un_mot_cle_lu_ne_retire_jamais_un_imprime,
+        test_la_lecture_decran_est_vraiment_branchee,
         test_live_stats_override_base,
         test_live_stats_degrade_without_ocr,
         test_screen_costs_are_read_for_known_cards,
