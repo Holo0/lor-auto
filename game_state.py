@@ -1384,7 +1384,11 @@ def lire_les_mots_cles(screen, zones: dict) -> int:
         for carte in zones.get(nom, ()) or ():
             try:
                 lus = mots_cles_ecran.identifier(screen, carte.center)
-            except Exception:   # une lecture ratée n'arrête pas un combat
+            except Exception as exc:   # une lecture ratée n'arrête pas un combat
+                LOGGER.warning(
+                    "Lecture des mots-clés de %s impossible (%s) : carte ignorée.",
+                    carte.code, exc,
+                )
                 continue
             if lus:
                 carte.keywords_lus = lus

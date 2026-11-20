@@ -100,8 +100,13 @@ PIÈGES MESURÉS ET ÉCARTÉS
     électrique du plateau et la rangée suivante entrent dans la fenêtre.
     C'est la fenêtre dy +38..+82 qui les exclut, pas la teinte.
 
-UNE SEULE SCÈNE OBSERVÉE (14/11/2026), sept unités. Les bornes sont
-prises large. À revoir dès qu'une capture étiquetée sera disponible.
+PLUS UNE SEULE SCÈNE, DÉSORMAIS (mis à jour le 20/11/2026). La
+géométrie de présence (dy +38..+82) reste mesurée sur la seule scène du
+14/11/2026, sept unités — bornes prises large, à resserrer dès qu'une
+autre capture étiquetée sera disponible. L'IDENTIFICATION, elle, ne
+repose plus sur cette scène-là : c'est celle du 20/11/2026 (cinq Pâle
+orchestre étiquetés par Ewan) qui porte toute l'identification des
+quatre mots-clés, avec Firespitter (14/11) en validation croisée.
 """
 
 from __future__ import annotations
