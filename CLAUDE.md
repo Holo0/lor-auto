@@ -2693,6 +2693,7 @@ python journal.py --depuis tout           # … sur tout l'historique (ou --depu
 python champions.py cut-defi <N> [capture x0 y0 x1 y1]  # police du titre — le 3 et le 5 viennent de la LISTE, pas d'un titre
 python bilan.py <capture.png>             # quel verdict porte un écran de fin de tentative
 python champions.py [capture.png]         # étoiles lues par vignette, et le champion retenu
+python mots_cles_ecran.py [capture.png]   # icônes de mots-clés sous chaque unité ; `cut-icone` récolte un gabarit
 python monitor_web.py                     # tout ça dans un navigateur, en direct : http://127.0.0.1:8765/ (--sans-ocr pour ne pas charger torch)
 ```
 
@@ -3535,15 +3536,55 @@ marge **0.320** — les deux largement au-dessus des deux planchers.
 14/11 — score **0.710**, marge **0.317**. Les gabarits franchissent donc
 les captures, pas seulement les vignettes d'une même scène.
 
-**COÛT.** Sur `scene_20261120_201157.png`, 5 centres d'unité :
-**43,1-43,6 ms** à chaud (gabarits déjà en cache — le régime réel
-pendant un combat), **50,7-52,5 ms** à froid. À rapporter à l'étalon du
-projet : l'instantané du bot coûte déjà ~2200 ms par itération, dont
-~900 ms pour la seule recherche multi-échelle du jeton d'attaque — cette
-lecture y pèse **2,0 % à chaud, 2,3 % à froid**. Le budget de 50 ms
+**COÛT — ET IL EST LINÉAIRE EN ICÔNES, PAS EN UNITÉS** (remesuré le
+20/11 au soir, la première annonce était trompeuse). Le chiffre publié,
+**43,1-43,6 ms à chaud / 50,7-52,5 ms à froid**, est celui de la SCÈNE
+MESURÉE : `scene_20261120_201157.png`, **5 unités portant CHACUNE
+4 icônes — 20 icônes**, c'est-à-dire un plateau entièrement renforcé.
+Le ramener à « 8,7 ms par unité » et le multiplier par les 10-12 unités
+d'un vrai plateau donnerait ~100 ms (4,7 % d'un instantané) : c'est
+faux, parce que le coût ne suit pas les unités. Mesuré, gabarits en
+cache, une unité à la fois :
+
+      0 icône   0,10 ms      2 icônes   5,09 ms
+      1 icône   2,63 ms      4 icônes   9,35 ms      5 icônes  11,68 ms
+
+soit **~2,3 ms par ICÔNE** plus ~0,1 ms de segmentation par unité. Une
+unité sans mot-clé — le cas ordinaire — coûte un dixième de
+milliseconde. Les sept unités réelles de la scène du 14/11 (8 icônes en
+tout) coûtent **19,7 ms**, soit **0,9 %** de l'instantané ; les 20
+icônes du 20/11, **43 ms, 2,0 %** ; un plateau de douze unités portant
+quatre mots-clés chacune (48 icônes) coûterait **~110 ms, ~5 %** — un
+vrai pire cas, jamais observé. À rapporter à l'étalon du projet :
+l'instantané coûte déjà ~2200 ms par itération, dont ~900 ms pour la
+seule recherche multi-échelle du jeton d'attaque. Le budget de 50 ms
 visait à attraper une surprise d'un ORDRE DE GRANDEUR (500 ms), pas à
 bloquer sur 51-57 ms : décision du contrôleur de commiter quand même,
 avec l'étalon qui manquait au seuil de 50 ms.
+
+**L'INTERRUPTEUR DE REPLI : `game_state.MOTS_CLES_ECRAN = False`**
+(20/11/2026, revue finale). Comme `MARQUEUR_LOSANGE`,
+`ATTENTE_ADAPTATIVE`, `CANCEL_WITH_LEFT_CLICK` et `--sans-ocr` avant
+lui. Trois des quatre mots-clés branchés ne sont PAS inertes —
+Challenger décide de la légalité d'un blocage, Overwhelm change
+l'excédent d'une attaque, Ephemeral pilote `dies_anyway` — et rien de
+tout ça n'a jamais tourné en jeu. À False, `lire_les_mots_cles` rend 0
+sans rien lire et tout le plateau retombe sur les mots-clés IMPRIMÉS,
+le comportement d'avant le 20/11, sans éditer une fonction en pleine
+session. Verrouillé par `test_game_state.
+test_la_lecture_decran_est_vraiment_branchee`, qui vérifie les deux
+sens : branché, l'écran est interrogé sous l'unité du banc et le
+mot-clé lu ressort de `snapshot()` ; coupé, l'écran n'est pas lu du
+tout.
+
+**ET LA LECTURE PARLE** : chaque mot-clé lu est journalisé **une fois
+par (CardID, mot-clé)** — le modèle de `CombatLoop._note_level_ups` —
+en distinguant « porte bien son X imprimé » de « a reçu X (absent de
+card_sets) ». Sans ça la branche entière aurait été MUETTE : bande
+décalée, seuils qui ne mordent plus, `mots_cles/` vidé, et le bot
+retombait sur son comportement d'avant sans un mot — avec, en prime,
+l'impossibilité de lever la dette « pas encore vu tourner en jeu »,
+puisqu'il n'y aurait rien eu à relire dans `logs/`.
 
 **PRIX ASSUMÉ, NOIR SUR BLANC.** On ne voit PAS les mots-clés RETIRÉS
 (un Silence, par exemple) : l'écran COMPLÈTE la carte imprimée et ne
@@ -3558,6 +3599,47 @@ Challenger, Overwhelm) sont récoltés, chacun des seize autres demandant
 une capture étiquetée par Ewan — « de gauche à droite : … » suffit,
 comme pour celle-ci.
 
+**ON PEUT ENFIN INTERROGER UNE CAPTURE** (20/11, revue finale).
+`champions.py <capture>`, `bilan.py <capture>` et `spells.py explain`
+ont tous leur point d'entrée ; celui-ci n'en avait aucun, et
+`cut_icone` — le SEUL outil de récolte de gabarits, donc le chemin
+obligé des seize mots-clés manquants — n'était atteignable que par
+`python -c` :
+
+    python mots_cles_ecran.py                       écran en direct
+    python mots_cles_ecran.py <capture.png>         + sa trame .json appariée
+    python mots_cles_ecran.py <capture.png> <x> <y> un centre à la main
+    python mots_cles_ecran.py cut-icone <capture.png> <x> <y> <index> <nom>
+
+Il imprime, par unité, le nombre d'icônes, la boîte de chacune AVEC SON
+INDEX (c'est lui que `cut-icone` demande) et ce qui est identifié. Une
+capture sans trame appariée n'est pas devinée : on demande un centre.
+
+**CE QUI RESTE OUVERT, ET QU'ON NE FAIT PAS MAINTENANT.** Trois pistes
+sorties de la revue finale ; aucune n'est un correctif, toutes sont des
+changements de CONCEPTION qu'il faudrait mesurer d'abord.
+  - **Compter les icônes NON reconnues.** `identifier()` rend ce qu'il
+    sait nommer et laisse tomber le reste en silence. S'il rendait
+    aussi le nombre de glyphes refusés, on classerait tout seuls les
+    seize gabarits manquants par FRÉQUENCE RÉELLE en partie — la
+    méthode de `journal.py --ecartees`, qui a déjà servi à savoir quelle
+    carte coder en premier. C'est la piste la plus rentable des trois.
+  - **Reconstruire le glyphe depuis la carte des labels** au lieu de
+    trancher le masque partagé. Le masque tranché contient les pixels
+    des VOISINS tombés dans la même boîte : c'est probablement pourquoi
+    le pire vrai positif mesuré (**0.710**, la validation croisée sur
+    Firespitter, collée à une tache de bordure 40×30) est aussi le plus
+    proche du plancher. `connectedComponentsWithStats` rend déjà la
+    carte des labels, elle est jetée.
+  - **Un pré-tri par famille de couleur.** `identifier` compare chaque
+    glyphe à TOUS les gabarits, et la part IoU est linéaire en nombre de
+    mots-clés : mesuré en dupliquant les gabarits, **46,6 ms à 4
+    mots-clés contre 239,7 ms à 20** sur la même scène — **×5,1**, très
+    exactement le facteur annoncé. Le jour où les vingt seront récoltés,
+    ce n'est plus 2 % d'un instantané mais 10 %. Les teintes sont déjà
+    séparées (ORANGE / BLEU / MAGENTA) : un glyphe magenta n'a rien à
+    comparer à un gabarit orange.
+
 **PAS ENCORE VU TOURNER EN JEU** : tout est mesuré sur des captures,
 jamais exercé dans une partie. Tests :
 `test_mots_cles_ecran.test_le_sablier_magenta_entre_dans_le_masque`,
@@ -3566,8 +3648,10 @@ jamais exercé dans une partie. Tests :
 `test_une_unite_sans_icone_nidentifie_rien`,
 `test_un_glyphe_etranger_nest_identifie_comme_rien`,
 `test_un_gabarit_franchit_les_captures`,
+`test_le_decoupage_suit_le_chemin_de_lecture`,
 `test_game_state.test_un_mot_cle_lu_a_lecran_complete_la_carte_imprimee`,
-`test_un_mot_cle_lu_ne_retire_jamais_un_imprime`.
+`test_un_mot_cle_lu_ne_retire_jamais_un_imprime`,
+`test_la_lecture_decran_est_vraiment_branchee`.
 
 ## Journal des sessions
 
