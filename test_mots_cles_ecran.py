@@ -28,6 +28,13 @@ CAPTURE_20 = (Path(__file__).parent / "captures_reference" / "mots_cles"
 # sanctification, challenger et enfin surpuissance ».
 CENTRE_ORCHESTRE = (645, 900)
 
+# Les CINQ Pâle orchestre de la même scène (`scene_20261120_201157.json`,
+# CardCode 06SI009), centres recalculés par `lor_api.rect_center_screen` —
+# pas une approximation à l'œil. La même carte, posée cinq fois : si le
+# masque se fragmente pareil sur les cinq, c'est que le découpage est une
+# propriété du GLYPHE, pas un accident d'une seule vignette.
+CENTRES_ORCHESTRE = [(645, 900), (802, 900), (959, 900), (1115, 900), (1272, 900)]
+
 FAILURES: list = []
 
 
@@ -209,12 +216,67 @@ def test_le_sablier_magenta_entre_dans_le_masque():
               all(20 <= e <= 30 for e in ecarts), ecarts)
 
 
+def test_un_glyphe_fragmente_se_recolle_entier():
+    """
+    LE 4e GLYPHE (Surpuissance) N'EST PAS « UN PEU PETIT », IL EST
+    FRAGMENTÉ. Une ombre interne coupe son masque en 22×11 + 9×8 + 4×8 +
+    16×8 — abaisser `ICONE_COTE_MIN` aurait juste laissé passer le plus
+    gros fragment (22×11), pas le glyphe (22×24). Et rien n'aurait rougi
+    si le découpage avait un jour tort : les CINQ vignettes de cette
+    scène se fragmentent à l'identique (auto-cohérence sans vérité, le
+    piège de `cut_defi` le 08/11). D'où l'assertion sur la HAUTEUR, pas
+    seulement le compte — c'est elle que la régression du 1er correctif
+    (22×11 au lieu de 22×24) aurait fait rougir.
+    """
+    print("\nUn glyphe fragmenté se recolle entier")
+    img = cv2.imread(str(CAPTURE_20))
+    if img is None:
+        check("capture du 20/11 présente", False, CAPTURE_20)
+        return
+
+    for centre in CENTRES_ORCHESTRE:
+        lues = mce.icones(img, centre)
+        check(f"quatre icônes en {centre}", len(lues) == 4,
+              f"lu {len(lues)} : {lues}")
+        if len(lues) != 4:
+            continue
+        hauteurs = [b[3] for b in lues]
+        check(f"   aucun glyphe tronqué en {centre} (hauteurs {hauteurs})",
+              all(h >= 20 for h in hauteurs), hauteurs)
+        xs = [b[0] for b in lues]
+        ecarts = [xs[i + 1] - xs[i] for i in range(3)]
+        check(f"   pas régulier de ~25 px en {centre}",
+              all(20 <= e <= 30 for e in ecarts), ecarts)
+
+    print("Le garde contre la sur-fusion, sur la scène du 14/11")
+    img14 = cv2.imread(str(CAPTURE))
+    if img14 is None:
+        check("capture de référence présente", False, CAPTURE)
+        return
+    # Firespitter colle à une grande tache de bordure (40×30 à 92,0) :
+    # recoller la colonne entière donnerait une boîte > ICONE_COTE_MAX,
+    # refusée — c'est ce refus qui laisse son glyphe réel (22×20) compter
+    # tout seul, plutôt que de faire disparaître les deux.
+    check("Firespitter garde son glyphe malgré la tache voisine",
+          mce.icones(img14, (880, 900)) == [(84, 20, 22, 20, 204)],
+          mce.icones(img14, (880, 900)))
+    # Les quatre vierges restent à zéro — la propriété qui porte tout le
+    # module ne doit RIEN céder à un recollage plus permissif.
+    for nom, centre in (("Arachnoid Sentry", (1194, 900)),
+                         ("House Spider", (802, 180)),
+                         ("Spiderling", (959, 180)),
+                         ("Imperial Demolitionist", (1115, 180))):
+        check(f"{nom} reste vierge malgré le recollage par colonne",
+              mce.icones(img14, centre) == [], mce.icones(img14, centre))
+
+
 def main():
     for test in (test_la_barre_se_lit_la_ou_elle_est,
                  test_un_mot_cle_accorde_se_voit,
                  test_les_pistes_naives_sont_ecartees,
                  test_une_lecture_impossible_ne_rend_pas_un_verdict,
-                 test_le_sablier_magenta_entre_dans_le_masque):
+                 test_le_sablier_magenta_entre_dans_le_masque,
+                 test_un_glyphe_fragmente_se_recolle_entier):
         test()
     print()
     if FAILURES:

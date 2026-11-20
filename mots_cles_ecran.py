@@ -19,7 +19,7 @@ RELATIVES à `card.center` (donc valables quelle que soit la position de
 l'unité sur le banc) :
 
       la barre occupe   dy +38 à +82      centrée en x sur card.center
-      une icône fait    11 à 34 px de côté, aire ≥ 60 px
+      une icône fait    12 à 34 px de côté, aire ≥ 60 px
 
 Les icônes se répartissent en TROIS FAMILLES DE COULEUR, orange, bleu
 clair et magenta (ce dernier ajouté le 20/11/2026, cf. `MAGENTA`
@@ -92,18 +92,29 @@ BARRE_DY_BAS = 82
 BARRE_DEMI_LARGEUR = 80
 
 # Une icône : ni un éclat de décor, ni la barre entière.
-# CÔTÉ MINIMAL ABAISSÉ DE 12 À 11 (20/11/2026). Mesuré sur la scène du
-# Pâle orchestre (06SI009) : le glyphe « Surpuissance » (orange, teinte
-# 19) a une ombre interne qui fragmente son masque en plusieurs
-# morceaux — un trait du GLYPHE, pas de la famille de couleur. Le plus
-# gros morceau mesure 22×11 (aire 117, largement au-dessus
-# d'ICONE_AIRE_MIN) : à 1 px près de l'ancien seuil, il restait invisible
-# alors que c'est une vraie icône. Vérifié SANS RÉGRESSION sur les sept
-# unités de la capture du 14/11 (unite_stun_20261114_231607.png) : les
-# quatre vierges restent à zéro icône, les trois porteuses restent
-# porteuses — aucun débris ne passe la barre avec ce seuil.
-ICONE_COTE_MIN, ICONE_COTE_MAX = 11, 34
+ICONE_COTE_MIN, ICONE_COTE_MAX = 12, 34
 ICONE_AIRE_MIN = 60
+
+# UN GLYPHE FRAGMENTÉ N'EST PAS TROIS PETITES ICÔNES (20/11/2026).
+# Le glyphe « Surpuissance » (orange, teinte 19, Pâle orchestre 06SI009)
+# a une ombre interne qui coupe son masque en plusieurs morceaux — un
+# trait du GLYPHE, pas de la famille de couleur : 22×11 (aire 117) +
+# 9×8 (52) + 4×8 (23) + 16×8 (61), alors que le glyphe ENTIER fait
+# 22×24. Abaisser `ICONE_COTE_MIN` à 11 n'aurait laissé passer QUE le
+# plus gros fragment (22×11, toujours pas le bon rectangle) — et rien
+# n'aurait rougi si `icones()` avait un jour tort sur le DÉCOUPAGE,
+# puisque les cinq vignettes de la scène se fragmentent à l'identique
+# (auto-cohérence sans vérité : le piège de `cut_defi` le 08/11).
+# `icones()` recolle donc les fragments d'une même COLONNE (plages en x
+# qui se touchent) avant de juger leur taille. Fragments exclus de la
+# fusion : sous `FRAGMENT_AIRE_MIN` (bruit d'antialiasing/compression,
+# jamais un bout de glyphe réel) et, au moment de juger la boîte
+# recollée, tout chevauchement dont le résultat dépasserait
+# `ICONE_COTE_MAX` — deux icônes VOISINES qui se touchent ne sont pas un
+# glyphe fragmenté, et c'est ce garde, lui seul, qui empêche Firespitter
+# (un vrai glyphe 22×20 collé à une grande tache de bordure 40×30) de
+# fusionner en un rectangle refusé puis de disparaître.
+FRAGMENT_AIRE_MIN = 20
 
 # Les familles de couleur, en HSV OpenCV. Franches sur fond noir.
 ORANGE = ((8, 130, 120), (28, 255, 255))
@@ -126,6 +137,45 @@ def _masque_icones(image) -> np.ndarray:
     return masque
 
 
+def _est_un_glyphe(largeur: int, hauteur: int, aire: int) -> bool:
+    """Une taille et une aire de glyphe plausibles — le SEUL juge de
+    taille, qu'on l'applique à un fragment brut ou à une boîte recollée."""
+    return (ICONE_COTE_MIN <= largeur <= ICONE_COTE_MAX
+            and ICONE_COTE_MIN <= hauteur <= ICONE_COTE_MAX
+            and aire >= ICONE_AIRE_MIN)
+
+
+def _boite_recollee(fragments: list) -> tuple:
+    """Boîte englobante d'un groupe de fragments, et la somme de leurs
+    aires (une aire de pixels ne se moyenne pas, elle s'additionne)."""
+    x0 = min(f[0] for f in fragments)
+    y0 = min(f[1] for f in fragments)
+    x1 = max(f[0] + f[2] for f in fragments)
+    y1 = max(f[1] + f[3] for f in fragments)
+    aire = sum(f[4] for f in fragments)
+    return (x0, y0, x1 - x0, y1 - y0, aire)
+
+
+def _colonnes(fragments: list) -> list:
+    """
+    Chaîne les fragments dont les plages en x se TOUCHENT ou se
+    chevauchent, triés de gauche à droite : la coupure d'un glyphe
+    fragmenté (ombre interne, antialiasing) reste dans sa colonne —
+    deux glyphes voisins qui ne se touchent pas en ouvrent une autre.
+    """
+    groupes: list = []
+    fin_courante = None
+    for fragment in sorted(fragments, key=lambda f: f[0]):
+        x, _, largeur = fragment[0], fragment[1], fragment[2]
+        if groupes and x <= fin_courante:
+            groupes[-1].append(fragment)
+            fin_courante = max(fin_courante, x + largeur)
+        else:
+            groupes.append([fragment])
+            fin_courante = x + largeur
+    return groupes
+
+
 def icones(image, centre: tuple) -> list:
     """
     Les icônes de mots-clés lues sous cette unité : [(x, y, w, h, aire)].
@@ -146,13 +196,23 @@ def icones(image, centre: tuple) -> list:
 
     masque = _masque_icones(image[y0:y1, x0:x1])
     nombre, _, stats, _ = cv2.connectedComponentsWithStats(masque, 8)
+    fragments = [tuple(int(v) for v in stats[i]) for i in range(1, nombre)
+                 if stats[i][4] >= FRAGMENT_AIRE_MIN]
+
     trouvees = []
-    for i in range(1, nombre):
-        x, y, lw, lh, aire = stats[i]
-        if (ICONE_COTE_MIN <= lw <= ICONE_COTE_MAX
-                and ICONE_COTE_MIN <= lh <= ICONE_COTE_MAX
-                and aire >= ICONE_AIRE_MIN):
-            trouvees.append((int(x), int(y), int(lw), int(lh), int(aire)))
+    for groupe in _colonnes(fragments):
+        x, y, largeur, hauteur, aire = _boite_recollee(groupe)
+        if _est_un_glyphe(largeur, hauteur, aire):
+            # La colonne ENTIÈRE forme un glyphe plausible : recollée.
+            trouvees.append((x, y, largeur, hauteur, aire))
+        elif len(groupe) > 1:
+            # Recollée, la colonne n'a plus la taille d'un glyphe — soit
+            # elle a trop grossi (deux icônes qui se touchent), soit elle
+            # reste trop pauvre (débris). On refuse la fusion et on
+            # rejuge chaque fragment pour ce qu'il est, seul.
+            for fx, fy, fw, fh, faire in groupe:
+                if _est_un_glyphe(fw, fh, faire):
+                    trouvees.append((fx, fy, fw, fh, faire))
     return sorted(trouvees, key=lambda b: b[0])
 
 
