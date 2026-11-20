@@ -19,10 +19,11 @@ RELATIVES à `card.center` (donc valables quelle que soit la position de
 l'unité sur le banc) :
 
       la barre occupe   dy +38 à +82      centrée en x sur card.center
-      une icône fait    12 à 34 px de côté, aire ≥ 60 px
+      une icône fait    11 à 34 px de côté, aire ≥ 60 px
 
-Les icônes se répartissent en DEUX FAMILLES DE COULEUR, orange et bleu
-clair, nettes et franches sur fond noir.
+Les icônes se répartissent en TROIS FAMILLES DE COULEUR, orange, bleu
+clair et magenta (ce dernier ajouté le 20/11/2026, cf. `MAGENTA`
+ci-dessous), nettes et franches sur fond noir.
 
 CE QUI EST MESURÉ, ET CE QUI NE L'EST PAS
 -----------------------------------------
