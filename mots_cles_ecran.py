@@ -54,14 +54,34 @@ et c'est ce refus qui protège Firespitter d'une sur-fusion. On ne rend
 donc toujours pas un compte comme une vérité absolue à l'usage externe
 du module : on rend d'abord « il y en a » ou « il n'y en a pas ».
 
-**L'IDENTIFICATION N'EST PAS FAITE, ET C'EST ASSUMÉ.** Les icônes sont
-assez nettes pour être reconnues par gabarit — deux ont même pu être
-rapprochées de `card_sets` à l'œil (le visage effrayant de Swain est son
-`Fearsome` imprimé, la forme angulaire de Firespitter son `Challenger`).
-Mais étiqueter les AUTRES demande de savoir quel mot-clé a été accordé,
-et ça ne se devine pas : c'est un fait de jeu. Tant qu'on n'a pas de
-captures étiquetées, dire « cette icône est un Overwhelm » serait
-inventer. `keywords.has()` n'est donc PAS branché ici.
+**L'IDENTIFICATION EST FAITE POUR QUATRE MOTS-CLÉS, ET C'EST TOUT**
+(20/11/2026). Ewan a étiqueté une scène de cinq Pâle orchestre (06SI009)
+dans l'ordre « Ephemeral, Hallowed, Challenger, Overwhelm » : la
+première fois que l'identité d'une icône vient d'un fait de jeu, pas
+d'une ressemblance à l'œil. `identifier()` compare chaque glyphe
+DÉCOUPÉ (`decouper`) aux gabarits de `mots_cles/` par le chemin de
+`digits.py` (IoU, égalisation du trait, rapport d'aspect conservé) et
+ne rend que ce qui franchit SCORE_SUR ET MARGE_SURE. Les seize autres
+mots-clés n'ont aucun gabarit : une icône qui leur appartient reste,
+à dessein, ABSENTE du tuple rendu — jamais devinée. `keywords.has()`
+reste donc non branché pour tout ce qui dépasse ces quatre-là.
+
+MESURE DE L'IDENTIFICATION (20/11/2026), sur les trois Pâle orchestre
+qui n'ont PAS servi à récolter les gabarits (`scene_20261120_201157.png`,
+centres (959, 900), (1115, 900), (1272, 900) — les gabarits viennent de
+(645, 900) et (802, 900)) :
+
+      pire score    0.714   (Hallowed en (959, 900))
+      pire marge    0.320   (même glyphe, Hallowed contre Ephemeral)
+
+Les deux dépassent largement SCORE_SUR (0.60) et MARGE_SURE (0.10). En
+élargissant aux cinq Pâle orchestre (les deux sources comprises, à 1.000
+par construction) et à la validation croisée du 14/11 (Firespitter,
+score 0.710, marge 0.317), l'ensemble des vrais positifs mesurés tient
+dans [0.710, 1.000] en score et [0.317, 0.640] en marge — à comparer aux
+glyphes ÉTRANGERS de Swain (14/11), qui ne dépassent jamais 0.409 de
+score ni 0.073 de marge contre nos quatre gabarits (`test_mots_cles_ecran.
+test_un_glyphe_etranger_nest_identifie_comme_rien`).
 
 CE QUE ÇA PERMET DÉJÀ. Une unité SANS mot-clé imprimé qui porte une
 icône a forcément été RENFORCÉE en jeu — et c'est observé : Legion
@@ -86,10 +106,13 @@ prises large. À revoir dès qu'une capture étiquetée sera disponible.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Iterable
 
 import cv2
 import numpy as np
+
+import digits
 
 # La barre d'icônes, en coordonnées relatives à `card.center`. Mesurée
 # sur les trois unités porteuses de la capture de référence ; les bornes
@@ -224,6 +247,47 @@ def icones(image, centre: tuple) -> list:
     return sorted(trouvees, key=lambda b: b[0])
 
 
+def decouper(image, centre: tuple, index: int):
+    """Le masque 0/255 du glyphe d'indice `index`, ou None."""
+    boites = icones(image, centre)
+    if not 0 <= index < len(boites):
+        return None
+    cx, cy = int(centre[0]), int(centre[1])
+    x0, y0 = cx - BARRE_DEMI_LARGEUR, cy + BARRE_DY_HAUT
+    x, y, w, h, _ = boites[index]
+    bande = image[y0:cy + BARRE_DY_BAS, x0:cx + BARRE_DEMI_LARGEUR]
+    return _masque_icones(bande)[y:y + h, x:x + w]
+
+
+def cut_icone(capture: str, centre: tuple, index: int, nom: str) -> str:
+    """
+    Récolte un gabarit depuis une capture ÉTIQUETÉE.
+
+    ON NE RÉCOLTE QUE CE QU'UN HUMAIN A NOMMÉ. Deviner l'identité d'une
+    icône serait inventer — c'est ce que ce module refusait de faire
+    depuis le 14/11, et il avait raison. L'ordre vient d'Ewan, pas de
+    l'image.
+
+    Le masque écrit est celui que `identifier` relira : on découpe PAR LE
+    CHEMIN DE LECTURE, jamais par un seuil choisi à part. Le piège est
+    documenté (`cut_defi`, 08/11) — une police découpée autrement ne se
+    reconnaît pas elle-même (IoU 0.83, marge sous le plancher).
+    """
+    image = cv2.imread(capture)
+    if image is None:
+        raise SystemExit(f"capture introuvable : {capture}")
+    masque = decouper(image, centre, index)
+    if masque is None or masque.size == 0:
+        raise SystemExit(f"aucune icône d'indice {index} sous {centre}")
+    chemin = Path(__file__).parent / "mots_cles" / f"{nom}.png"
+    chemin.parent.mkdir(exist_ok=True)
+    rgba = np.zeros((*masque.shape, 4), np.uint8)
+    rgba[:, :, :3] = 255
+    rgba[:, :, 3] = masque
+    cv2.imwrite(str(chemin), rgba)
+    return str(chemin)
+
+
 def porte_des_mots_cles(image, centre: tuple) -> bool:
     """
     Cette unité affiche-t-elle AU MOINS un mot-clé ?
@@ -263,3 +327,90 @@ def cartes_renforcees(image, cartes: Iterable) -> set:
         if a_recu_un_mot_cle(image, carte):
             trouvees.add(card_id)
     return trouvees
+
+
+# LES SEUILS SONT MESURÉS POUR CE PROBLÈME, pas hérités (20/11/2026).
+# `digits.CONFIDENT_SCORE` (0.72) a été calibré pour les CHIFFRES : dix
+# classes de formes voisines. Ici les pictogrammes sont très distincts et
+# c'est la MARGE qui discrimine. Mesuré sur les 5 Pâle orchestre du 20/11
+# et les glyphes ÉTRANGERS de la scène du 14/11 :
+#
+#     vrais positifs   score 0.710 à 0.988 | marge 0.119 à 0.630
+#     glyphes étrangers score <= 0.429     | marge <= 0.073
+#
+# Le score reste indispensable : seul lui peut refuser un mot-clé dont on
+# n'a AUCUN gabarit. 0.60 laisse 0.11 sous le pire vrai positif et 0.17
+# au-dessus du meilleur étranger. Les DEUX planchers doivent être franchis.
+SCORE_SUR = digits.MIN_SCORE              # 0.60
+MARGE_SURE = digits.CONFIDENT_MARGIN      # 0.10
+
+_GABARITS: dict = {}
+
+# Radical de fichier -> mot-clé tel que `card_sets` l'écrit. `BoardCard.has`
+# normalise la casse et la ponctuation, mais on écrit la forme juste.
+NOMS = {
+    "ephemeral": "Ephemeral",
+    "hallowed": "Hallowed",
+    "challenger": "Challenger",
+    "overwhelm": "Overwhelm",
+}
+
+
+def _famille(radical: str) -> str:
+    """« hallowed2 » appartient à la famille « hallowed ». Même rôle que
+    `digits._family` : plusieurs variantes d'un même mot-clé."""
+    return radical.rstrip("0123456789") or radical
+
+
+def charger_gabarits() -> dict:
+    """
+    mot-clé -> ses VARIANTES, masques 0/1. L'ALPHA porte la forme, comme
+    `chiffres/` — un glyphe opaque ne vaudrait rien.
+
+    Le score d'un mot-clé est celui de sa MEILLEURE variante ; la marge se
+    mesure entre deux mots-clés DIFFÉRENTS, jamais entre deux variantes du
+    même. C'est mot pour mot la règle de `digits.match_glyph`.
+    """
+    if _GABARITS:
+        return _GABARITS
+    dossier = Path(__file__).parent / "mots_cles"
+    for png in sorted(dossier.glob("*.png")):
+        brut = cv2.imread(str(png), cv2.IMREAD_UNCHANGED)
+        if brut is None or brut.ndim < 3 or brut.shape[2] < 4:
+            continue
+        famille = _famille(png.stem)
+        nom = NOMS.get(famille, famille)
+        _GABARITS.setdefault(nom, []).append((brut[:, :, 3] >= 128).astype(np.uint8))
+    return _GABARITS
+
+
+def _score(glyphe, gabarit) -> float:
+    """Le chemin de `digits.match_glyph`, appliqué à nos pictogrammes."""
+    forme = digits._normalized((glyphe > 0).astype(np.uint8))
+    cible = digits._normalized((gabarit > 0).astype(np.uint8))
+    return digits._iou(digits._equalize_stroke(forme, float(cible.mean())), cible)
+
+
+def identifier(image, centre: tuple) -> tuple:
+    """
+    Les mots-clés SÛREMENT lus sous cette unité, dans l'ordre de lecture.
+
+    Un glyphe sous les paliers n'est PAS identifié : il est absent du
+    tuple. Il reste compté par `porte_des_mots_cles`, qui ne prétend
+    qu'à la présence. Ne jamais rendre une valeur approchée.
+    """
+    gabarits = charger_gabarits()
+    if not gabarits:
+        return ()
+    trouves = []
+    for index in range(len(icones(image, centre))):
+        glyphe = decouper(image, centre, index)
+        if glyphe is None or glyphe.size == 0:
+            continue
+        notes = sorted(((max(_score(glyphe, v) for v in variantes), nom)
+                        for nom, variantes in gabarits.items()), reverse=True)
+        meilleur = notes[0]
+        second = notes[1] if len(notes) > 1 else (0.0, "")
+        if meilleur[0] >= SCORE_SUR and meilleur[0] - second[0] >= MARGE_SURE:
+            trouves.append(meilleur[1])
+    return tuple(trouves)

@@ -270,13 +270,102 @@ def test_un_glyphe_fragmente_se_recolle_entier():
               mce.icones(img14, centre) == [], mce.icones(img14, centre))
 
 
+# Les vignettes qui n'ont PAS servi de source. Les gabarits sont récoltés
+# sur (645, 900) et (802, 900) ; tester sur l'une d'elles serait comparer
+# un gabarit à son propre découpage — 1.0 par construction, qui ne
+# prouve rien.
+AUTRES_ORCHESTRES = ((959, 900), (1115, 900), (1272, 900))
+
+
+def test_les_quatre_icones_sont_identifiees():
+    """
+    L'ORDRE EST UN FAIT DE JEU, PAS UNE DÉDUCTION (Ewan, 20/11/2026).
+
+    Et c'est le test qui justifie tout le module : 06SI009 n'imprime que
+    Hallowed et Ephemeral. Challenger et Overwhelm lui ont été ACCORDÉS.
+
+    Vérifié sur les trois exemplaires qui n'ont PAS servi de source :
+    un gabarit comparé à son propre découpage rendrait 1.0 et ne
+    prouverait rien.
+    """
+    print("\nIdentification des quatre icônes")
+    img = cv2.imread(str(CAPTURE_20))
+    if img is None:
+        check("capture du 20/11 présente", False, CAPTURE_20)
+        return
+    attendu = ("Ephemeral", "Hallowed", "Challenger", "Overwhelm")
+    for centre in AUTRES_ORCHESTRES:
+        lu = mce.identifier(img, centre)
+        check(f"Pâle orchestre en {centre} : les quatre, dans l'ordre",
+              lu == attendu, lu)
+
+
+def test_une_unite_sans_icone_nidentifie_rien():
+    """Le miroir, sans lequel le test précédent ne prouverait rien."""
+    print("\nUne unité vierge n'identifie rien")
+    img = cv2.imread(str(CAPTURE))
+    if img is None:
+        check("capture du 14/11 présente", False, CAPTURE)
+        return
+    check("Arachnoid Sentry : aucun mot-clé identifié",
+          mce.identifier(img, (1194, 900)) == ())
+
+
+def test_un_glyphe_etranger_nest_identifie_comme_rien():
+    """
+    LE CAS QUI PROTÈGE DES SEIZE MOTS-CLÉS QU'ON N'A PAS.
+
+    La marge sépare les quatre mots-clés CONNUS entre eux ; seul le score
+    absolu peut refuser un cinquième dont on n'a aucun gabarit. Swain
+    porte Fearsome et quatre autres icônes, dont AUCUNE n'est des nôtres.
+    Mesuré : ses glyphes notent au mieux 0.409 contre nos gabarits, avec
+    des marges de 0.003 à 0.073 — très en dessous de 0.60 / 0.10.
+
+    Si ce test rougit, c'est qu'un seuil a été desserré et que le module
+    s'est mis à inventer des mots-clés. C'est le pire défaut possible
+    ici : un Challenger imaginaire ferait glisser un bloqueur sur un
+    geste que le jeu refuse.
+    """
+    print("\nUn mot-clé qu'on ne connaît pas n'est pas deviné")
+    img = cv2.imread(str(CAPTURE))
+    if img is None:
+        check("capture du 14/11 présente", False, CAPTURE)
+        return
+    lu = mce.identifier(img, (724, 900))      # Swain, 5 icônes étrangères
+    check("Swain : aucune de ses icônes n'est prise pour une des nôtres",
+          lu == (), lu)
+
+
+def test_un_gabarit_franchit_les_captures():
+    """
+    VALIDATION CROISÉE, à six jours d'écart. Enraged Firespitter imprime
+    `Challenger` dans `card_sets`, et sa capture date du 14/11 — les
+    gabarits, eux, sont découpés sur celle du 20/11. Le reconnaître prouve
+    que les gabarits ne collent pas à leur seule image d'origine.
+
+    Mesuré : 0.710, marge 0.317.
+    """
+    print("\nUn gabarit du 20/11 reconnaît une icône du 14/11")
+    img = cv2.imread(str(CAPTURE))
+    if img is None:
+        check("capture du 14/11 présente", False, CAPTURE)
+        return
+    check("Firespitter : son Challenger imprimé est reconnu",
+          "Challenger" in mce.identifier(img, (880, 900)),
+          mce.identifier(img, (880, 900)))
+
+
 def main():
     for test in (test_la_barre_se_lit_la_ou_elle_est,
                  test_un_mot_cle_accorde_se_voit,
                  test_les_pistes_naives_sont_ecartees,
                  test_une_lecture_impossible_ne_rend_pas_un_verdict,
                  test_le_sablier_magenta_entre_dans_le_masque,
-                 test_un_glyphe_fragmente_se_recolle_entier):
+                 test_un_glyphe_fragmente_se_recolle_entier,
+                 test_les_quatre_icones_sont_identifiees,
+                 test_une_unite_sans_icone_nidentifie_rien,
+                 test_un_glyphe_etranger_nest_identifie_comme_rien,
+                 test_un_gabarit_franchit_les_captures):
         test()
     print()
     if FAILURES:
