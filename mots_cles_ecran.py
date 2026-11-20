@@ -31,20 +31,28 @@ Sur la seule scène étiquetée dont on dispose — sept unités dont les
 mots-clés imprimés sont connus par `card_sets` :
 
       unité                   imprimés   icônes détectées
-      Swain (Fearsome)            1            4
-      Enraged Firespitter          1            3
+      Swain (Fearsome)            1            5
+      Enraged Firespitter          1            1
       Legion Saboteur              0            2
       Arachnoid Sentry             0            0
       House Spider                 0            0
       Spiderling                   0            0
       Imperial Demolitionist       0            0
 
-**LA PRÉSENCE EST FIABLE, LE COMPTE NE L'EST PAS.** Les quatre unités
-sans aucun mot-clé ne déclenchent RIEN : zéro faux positif. Mais le
-nombre exact d'icônes varie de ±1 selon qu'elles se touchent ou se
-fragmentent (sur cette image, Swain en porte 5 à l'œil et 4 au masque,
-Firespitter 2 et 3). On ne rend donc JAMAIS un compte comme une
-vérité : on rend « il y en a » ou « il n'y en a pas ».
+**LA PRÉSENCE EST FIABLE ; LE COMPTE L'EST DEVENU, EN PARTIE**
+(20/11/2026). Les quatre unités sans aucun mot-clé ne déclenchent
+RIEN : zéro faux positif. Un glyphe FRAGMENTÉ (ombre interne,
+antialiasing) ne vaut plus pour plusieurs icônes : `_colonnes` le
+recolle en une seule boîte avant de le juger — c'est ce qui fait
+passer Swain de 4 à 5 (le 5e glyphe était là, vu « à l'œil » depuis le
+14/11, jamais recollé) et Firespitter de 3 à 1 (ses deux fragments
+en trop n'étaient que le bord d'une tache de bordure voisine, pas des
+icônes). Ce qui reste VRAI : deux glyphes VOISINS qui se touchent sans
+former un rectangle plausible ne sont toujours pas fusionnés à tort —
+`_est_un_glyphe` refuse toute boîte recollée hors de `ICONE_COTE_MAX`,
+et c'est ce refus qui protège Firespitter d'une sur-fusion. On ne rend
+donc toujours pas un compte comme une vérité absolue à l'usage externe
+du module : on rend d'abord « il y en a » ou « il n'y en a pas ».
 
 **L'IDENTIFICATION N'EST PAS FAITE, ET C'EST ASSUMÉ.** Les icônes sont
 assez nettes pour être reconnues par gabarit — deux ont même pu être

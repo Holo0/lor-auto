@@ -1,0 +1,155 @@
+{
+ "PlayerName": "WiseWolveHolo",
+ "OpponentName": "card_01SI052T1_Name",
+ "GameState": "InProgress",
+ "Screen": {
+  "ScreenWidth": 1920,
+  "ScreenHeight": 1080
+ },
+ "Rectangles": [
+  {
+   "CardID": 272636461,
+   "CardCode": "face",
+   "TopLeftX": 179,
+   "TopLeftY": 481,
+   "Width": 117,
+   "Height": 117,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1960363579,
+   "CardCode": "face",
+   "TopLeftX": 179,
+   "TopLeftY": 716,
+   "Width": 117,
+   "Height": 117,
+   "LocalPlayer": false
+  },
+  {
+   "CardID": 837122252,
+   "CardCode": "09DE031",
+   "TopLeftX": 478,
+   "TopLeftY": 77,
+   "Width": 175,
+   "Height": 245,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 467071867,
+   "CardCode": "09DE034",
+   "TopLeftX": 634,
+   "TopLeftY": 84,
+   "Width": 176,
+   "Height": 246,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1733976686,
+   "CardCode": "06SI012",
+   "TopLeftX": 792,
+   "TopLeftY": 86,
+   "Width": 176,
+   "Height": 247,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 72117529,
+   "CardCode": "01SI049",
+   "TopLeftX": 950,
+   "TopLeftY": 84,
+   "Width": 177,
+   "Height": 248,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 657735978,
+   "CardCode": "01SI052",
+   "TopLeftX": 741,
+   "TopLeftY": 1249,
+   "Width": 148,
+   "Height": 216,
+   "LocalPlayer": false
+  },
+  {
+   "CardID": 2004509665,
+   "CardCode": "06SI009",
+   "TopLeftX": 582,
+   "TopLeftY": 260,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 750079879,
+   "CardCode": "06SI009",
+   "TopLeftX": 739,
+   "TopLeftY": 260,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1749722455,
+   "CardCode": "06SI009",
+   "TopLeftX": 896,
+   "TopLeftY": 260,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1839420975,
+   "CardCode": "06SI009",
+   "TopLeftX": 1052,
+   "TopLeftY": 260,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 758390369,
+   "CardCode": "06SI012",
+   "TopLeftX": 1110,
+   "TopLeftY": 78,
+   "Width": 178,
+   "Height": 249,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 999137377,
+   "CardCode": "03SI009",
+   "TopLeftX": 817,
+   "TopLeftY": 980,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": false
+  },
+  {
+   "CardID": 1674134401,
+   "CardCode": "06SI009",
+   "TopLeftX": 1209,
+   "TopLeftY": 260,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1266303084,
+   "CardCode": "01SI048",
+   "TopLeftX": 974,
+   "TopLeftY": 980,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": false
+  },
+  {
+   "CardID": 1316278958,
+   "CardCode": "01SI049",
+   "TopLeftX": 1271,
+   "TopLeftY": 67,
+   "Width": 179,
+   "Height": 250,
+   "LocalPlayer": true
+  }
+ ]
+}
