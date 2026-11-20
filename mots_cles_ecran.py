@@ -207,23 +207,43 @@ def _colonnes(fragments: list) -> list:
     return groupes
 
 
-def icones(image, centre: tuple) -> list:
+def _icones_et_masque(image, centre: tuple):
     """
-    Les icônes de mots-clés lues sous cette unité : [(x, y, w, h, aire)].
+    Calcule EN UNE SEULE FOIS le masque de la bande d'icônes et les boîtes
+    qu'il contient : (boites, masque), `masque` étant celui dont chaque
+    boîte est issue — donc directement tranchable par un appelant qui veut
+    aussi les PIXELS d'une icône, pas que sa position.
 
-    Rend une liste VIDE dès qu'on ne peut pas lire — pas d'image, cadre
-    hors écran, forme inattendue. Même règle que `stun.mouvement` et
+    SOURCE UNIQUE DE LA SEGMENTATION (20/11/2026, revue de la tâche 3).
+    `icones()` segmentait, puis `decouper()` segmentait DE NOUVEAU (en
+    rappelant `icones()`) pour chaque glyphe demandé : `identifier()`
+    payait donc le masque + `connectedComponentsWithStats` + le recollage
+    par colonnes UNE fois pour compter, puis ENCORE une fois PAR GLYPHE
+    rien que pour en retrouver les boîtes, plus une troisième segmentation
+    du masque (strictement identique, même bande) pour en extraire les
+    pixels. Pour 4 icônes : 1 + 4 + 4 = 9 segmentations au lieu d'1.
+
+    MESURÉ (tâche 3, 20/11/2026), 5 unités, gabarits en cache (régime réel
+    d'un combat) : 49.8-50.9 ms AVANT ce correctif, 43.1-43.6 ms APRÈS —
+    voir `game_state.lire_les_mots_cles` pour le chiffrage complet (à
+    froid aussi) et sa mise en regard des ~2200 ms d'un instantané.
+    `icones()` et `decouper()` restent la même INTERFACE (même signature,
+    même contrat, y compris leurs cas limites) ; ils délèguent ici pour ne
+    plus JAMAIS pouvoir diverger entre deux chemins de découpe.
+
+    Rend `([], None)` dès qu'on ne peut pas lire — pas d'image, cadre hors
+    écran, forme inattendue. Même règle que `stun.mouvement` et
     `bilan.juger` : ne rien pouvoir lire n'est pas un verdict.
     """
     forme = getattr(image, "shape", None)
     if forme is None or len(forme) < 3:
-        return []
+        return [], None
     cx, cy = int(centre[0]), int(centre[1])
     h, w = forme[0], forme[1]
     x0, x1 = cx - BARRE_DEMI_LARGEUR, cx + BARRE_DEMI_LARGEUR
     y0, y1 = cy + BARRE_DY_HAUT, cy + BARRE_DY_BAS
     if x0 < 0 or y0 < 0 or x1 > w or y1 > h:
-        return []
+        return [], None
 
     masque = _masque_icones(image[y0:y1, x0:x1])
     nombre, _, stats, _ = cv2.connectedComponentsWithStats(masque, 8)
@@ -244,19 +264,28 @@ def icones(image, centre: tuple) -> list:
             for fx, fy, fw, fh, faire in groupe:
                 if _est_un_glyphe(fw, fh, faire):
                     trouvees.append((fx, fy, fw, fh, faire))
-    return sorted(trouvees, key=lambda b: b[0])
+    return sorted(trouvees, key=lambda b: b[0]), masque
+
+
+def icones(image, centre: tuple) -> list:
+    """
+    Les icônes de mots-clés lues sous cette unité : [(x, y, w, h, aire)].
+
+    Rend une liste VIDE dès qu'on ne peut pas lire — pas d'image, cadre
+    hors écran, forme inattendue. Même règle que `stun.mouvement` et
+    `bilan.juger` : ne rien pouvoir lire n'est pas un verdict.
+    """
+    boites, _ = _icones_et_masque(image, centre)
+    return boites
 
 
 def decouper(image, centre: tuple, index: int):
     """Le masque 0/255 du glyphe d'indice `index`, ou None."""
-    boites = icones(image, centre)
-    if not 0 <= index < len(boites):
+    boites, masque = _icones_et_masque(image, centre)
+    if masque is None or not 0 <= index < len(boites):
         return None
-    cx, cy = int(centre[0]), int(centre[1])
-    x0, y0 = cx - BARRE_DEMI_LARGEUR, cy + BARRE_DY_HAUT
     x, y, w, h, _ = boites[index]
-    bande = image[y0:cy + BARRE_DY_BAS, x0:cx + BARRE_DEMI_LARGEUR]
-    return _masque_icones(bande)[y:y + h, x:x + w]
+    return masque[y:y + h, x:x + w]
 
 
 def cut_icone(capture: str, centre: tuple, index: int, nom: str) -> str:
@@ -398,13 +427,22 @@ def identifier(image, centre: tuple) -> tuple:
     Un glyphe sous les paliers n'est PAS identifié : il est absent du
     tuple. Il reste compté par `porte_des_mots_cles`, qui ne prétend
     qu'à la présence. Ne jamais rendre une valeur approchée.
+
+    Appelle `_icones_et_masque` UNE SEULE FOIS (boîtes + masque), puis
+    tranche dedans pour chaque glyphe — au lieu de rappeler `icones()`
+    pour compter et `decouper()` pour chaque indice, qui redemandait la
+    même segmentation à chaque fois. Voir `_icones_et_masque` pour le
+    chiffrage et la mesure du coût avant/après (tâche 3, 20/11/2026).
     """
     gabarits = charger_gabarits()
     if not gabarits:
         return ()
+    boites, masque = _icones_et_masque(image, centre)
+    if masque is None:
+        return ()
     trouves = []
-    for index in range(len(icones(image, centre))):
-        glyphe = decouper(image, centre, index)
+    for x, y, w, h, _ in boites:
+        glyphe = masque[y:y + h, x:x + w]
         if glyphe is None or glyphe.size == 0:
             continue
         notes = sorted(((max(_score(glyphe, v) for v in variantes), nom)

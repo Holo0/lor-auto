@@ -62,10 +62,39 @@ DISTINGUER « JE BLOQUE » DE « J'AI ATTAQUÉ ET IL A BLOQUÉ »
 --------------------------------------------------------------------
 Piège classique : dans les deux cas il y a des cartes adverses dans la
 bande `enemy_attack`. Le bot de référence s'en sort avec des temporisa-
-tions. On fait mieux : si NOTRE rangée d'attaque est occupée, c'est nous
-l'attaquant (phase ATTACKING, il n'y a qu'à attendre la résolution) ;
-si elle est vide et que la rangée adverse est occupée, c'est nous qui
-devons bloquer (phase BLOCKING).
+tions. On fait mieux : notre rangée d'attaque vide et la sienne occupée,
+c'est nous qui devons bloquer (phase BLOCKING) ; notre rangée occupée et
+la sienne vide, c'est nous l'attaquant et il n'a pas encore répondu
+(phase ATTACKING).
+
+Reste le cas où LES DEUX sont occupées, et il est ambigu : soit nous
+attaquons et ce sont ses bloqueurs, soit c'est lui qui attaque et un
+Challenger a TIRÉ une de nos unités devant lui. Le jeton départage — il
+dit à qui appartient ce round d'attaque — mais seulement quand il est
+POSITIVEMENT vu du côté adverse : une détection manquée ne doit pas
+inventer une attaque adverse. Dans le doute, `combat.CombatLoop` reprend
+la question sans rien regarder, puisqu'elle SAIT ce qu'elle a déclaré.
+
+Trois règles rendent cette lecture fiable, et toutes ont été apprises en
+regardant le bot encaisser des attaques sans broncher :
+
+1. LE CAMP PRIME SUR LA HAUTEUR. Une unité qui charge traverse trois
+   bandes ; laquelle elle atteint dépend de l'animation. Son camp, lui,
+   vient de l'API. `reconcile_combat_rows()` range donc toute unité
+   avancée d'après `LocalPlayer`, la hauteur ne servant plus qu'à dire
+   « elle est engagée ».
+
+2. L'ATTAQUE SE LIT AVANT L'ORBE. L'orbe répond à « puis-je cliquer ? »,
+   pas à « que se passe-t-il ? ». Elle est grise pendant la charge
+   adverse ; tester l'orbe en premier donnait OPPONENT_TURN au moment
+   précis où il fallait bloquer, et le tour se terminait sur un
+   « pas d'attaque ce tour » parfaitement faux.
+
+3. « NOTRE RANGÉE EST OCCUPÉE » N'EST PAS « NOUS ATTAQUONS ». Challenger
+   et Vulnerable tirent une de nos unités en face de l'attaquant : elle
+   traverse la ligne sans qu'on ait rien déclaré. Le 20/08/2026, le bot y
+   a lu son attaque et a attendu une résolution qui ne venait pas pendant
+   que le jeu réclamait des bloqueurs.
 
 --------------------------------------------------------------------
 UTILISATION
@@ -81,6 +110,7 @@ UTILISATION
 
 CLI :
     python game_state.py monitor      # boucle de surveillance en direct
+    python game_state.py monitor --trace trace.jsonl   # + ratios, pour diagnostiquer
     python game_state.py inspect      # tableau des rectangles + zones
     python game_state.py vision       # crops de calibration + score du jeton
     python game_state.py snap avec    # capture d'écran nommée
@@ -100,7 +130,10 @@ from typing import Iterable, Optional
 import cv2
 import numpy as np
 
+import digits
 import lor_api
+import mots_cles_ecran
+import sortie_utf8
 from lor_api import ApiUnavailable, Window
 
 LOGGER = logging.getLogger(__name__)
@@ -210,7 +243,62 @@ ATTACK_TOKEN_TEMPLATE = lor_api.PROJECT_ROOT / "assets" / "attack_token.png"
 # et on finit par accepter des correspondances qui n'en sont pas. Le
 # score affiché par `monitor` doit rester nettement au-dessus du seuil
 # quand le jeton est là, et nettement en dessous quand il ne l'est pas.
-ATTACK_TOKEN_MATCH_THRESHOLD = 0.75
+# 02/09/2026 : avec le template MASQUÉ (fond exclu), Ewan mesure 0.60-0.70
+# épée présente. Le masque a changé la nature du score — il ne porte plus
+# que sur l'épée, dont les reflets et la légère pulsation font varier les
+# pixels — et la recherche multi-échelle ci-dessous doit le remonter. Le
+# seuil descend à 0.55 : sans fond dans le template, un faux positif sur
+# le décor devient improbable (0.03 sur un fond quelconque hors ligne).
+# À confirmer avec `monitor` : score SANS jeton nettement sous ce seuil.
+ATTACK_TOKEN_MATCH_THRESHOLD = 0.55
+
+# Échelles essayées pour le template. La capture qui a servi à découper
+# l'épée date du 06/08 ; si la fenêtre du jeu n'a plus tout à fait la
+# même taille, l'épée à l'écran n'a plus celle du template et le score
+# plafonne. On garde la meilleure échelle — `TokenMatch.scale` le dit, et
+# si elle est toujours la même (≠ 1.0), c'est un `cut-token` à refaire.
+ATTACK_TOKEN_SCALES = (0.85, 0.90, 0.95, 1.0, 1.05, 1.10, 1.15)
+
+# --- le prix des sept échelles, et comment on le paie -----------------
+# Un matching MASQUÉ coûte cinq fois un matching simple : 104 ms contre
+# 23 sur la région, mesuré le 10/11/2026. Sept échelles en pleine
+# résolution, c'est près d'une seconde, et `snapshot()` en fait une à
+# chaque lecture.
+#
+# MESURÉ LE 10/11/2026, en rejouant une trace réelle : le jeton est
+# ABSENT dans 68 % des lectures (73 sur 107), et c'est le cas CHER —
+# 911 ms de médiane contre 234 quand il est là, parce que l'échelle
+# gagnante mise en cache échouait et déclenchait le balayage complet.
+# Moyenne 696 ms, soit l'essentiel des 2,2 s de lecture d'une itération.
+#
+# D'où DEUX ÉTAGES : un relevé de TOUTES les échelles sur l'image
+# RÉDUITE (43 ms pour les sept), puis la confirmation en PLEINE
+# résolution des quelques PICS retenus (7 ms chacun). On ne paie plus
+# jamais une corrélation pleine résolution sur toute la région.
+#
+# POURQUOI DEUX ÉTAGES PLUTÔT QU'UN SEUIL SUR L'IMAGE RÉDUITE : le score
+# réduit n'est pas le score — mesuré sur 501 captures réelles, il est
+# plus haut de 0,065 en médiane. Le confirmer en pleine résolution rend
+# un score de même nature qu'avant, donc un seuil qui veut dire la même
+# chose.
+ATTACK_TOKEN_COARSE = 0.25
+
+# Plancher de taille du template réduit : en dessous, la forme n'a plus
+# assez de pixels pour que la corrélation veuille dire quelque chose. En
+# dessous de ce plancher on ne réduit pas du tout (cas des templates
+# minuscules des tests) et le relevé EST la lecture.
+ATTACK_TOKEN_COARSE_MIN_SIDE = 24
+
+# Pics du relevé grossier confirmés en pleine résolution. Un seul
+# suffirait sur toutes les captures mesurées ; on en garde trois parce
+# qu'un pic grossier mal placé coûterait une détection et que chaque pic
+# supplémentaire ne coûte que 7 ms.
+ATTACK_TOKEN_PEAKS = 2
+
+# Marge (pixels pleine résolution) autour d'un pic : le relevé grossier
+# situe le template au quart de pixel près, la confirmation doit pouvoir
+# glisser autour.
+ATTACK_TOKEN_CONFIRM_MARGIN = 32
 
 # Région de recherche volontairement large en hauteur : elle doit couvrir
 # les DEUX moitiés du plateau pour pouvoir déterminer de quel côté se
@@ -289,22 +377,56 @@ class BoardCard:
     card_id: int
     code: str
     name: str
-    cost: int
+    base_cost: int
     base_attack: int
     base_health: int
     type: str
     keywords: tuple
     keyword_refs: tuple
     description: str
+    spell_speed: str          # Burst / Fast / Slow, depuis spellSpeedRef
     local: bool
     zone: str
     ratio: float
     box: tuple      # (left, top, right, bottom) en coordonnées bureau
     center: tuple   # (x, y) en coordonnées bureau
     known: bool     # False si le cardCode est absent de card_sets
+    # `supertype` vaut "Champion" pour les champions — ET pour leur version
+    # de niveau 2, qui a son propre cardCode (01IO015 Yasuo → 01IO015T1
+    # une fois monté). L'API rapporte ce nouveau code : le level-up se lit
+    # donc SANS vision, il suffit de regarder le code (cf. is_leveled).
+    supertype: str = ""
+    collectible: bool = True
+    # Bord droit de la partie VISIBLE de la carte quand sa voisine de
+    # droite la recouvre (main pleine). None = rien ne la recouvre. Posé
+    # par group_by_zone, lu par grab_point.
+    visible_right: Optional[int] = None
+
+    # ÉTOURDIE — LU À L'ÉCRAN, PAS DANS L'API (14/11/2026, fait de jeu
+    # d'Ewan). L'API ne rend que sept champs : l'étourdissement n'en fait
+    # pas partie, et « Stun » n'existe même pas comme mot-clé de carte.
+    # Rempli par `actions.lire_les_etourdies` avant un blocage, au vu du
+    # tourbillon violet qui tourne au centre de la carte (cf. `stun.py`).
+    # FAUX PAR DÉFAUT VEUT DIRE « ON N'A PAS REGARDÉ », pas « elle est
+    # saine » : le filet de `execute_blocks` — remplacer un bloqueur qui
+    # refuse son poste — reste derrière, et c'est lui qui tranche quand
+    # la lecture n'a pas eu lieu.
+    stunned: bool = False
+
+    # MOTS-CLÉS LUS À L'ÉCRAN (20/11/2026). L'API ne rend qu'un CardCode :
+    # un Challenger ou un Overwhelm ACCORDÉ en jeu est invisible. Mesuré
+    # sur 06SI009 « Pâle orchestre », qui imprime 2 mots-clés et en
+    # affiche 4. Rempli par `lire_les_mots_cles`.
+    #
+    # VIDE VEUT DIRE « ON N'A PAS REGARDÉ », pas « elle n'a rien » — même
+    # règle que `stunned`. C'est pourquoi `has` fait une UNION : l'écran
+    # COMPLÈTE la carte imprimée et ne retire jamais rien. Conséquence
+    # assumée : un Silence ne se voit pas.
+    keywords_lus: tuple = ()
 
     # Stats LUES à l'écran, remplies par enrich_with_live_stats().
     # None tant que l'OCR n'a pas tourné : ne pas confondre avec 0.
+    cost_read: Optional[int] = None
     attack_read: Optional[int] = None
     health_read: Optional[int] = None
 
@@ -314,6 +436,10 @@ class BoardCard:
     # décision utilise donc automatiquement les stats réelles dès que
     # l'OCR a tourné, sans qu'aucun appelant ait à le savoir — buffs,
     # dégâts subis et affaiblissements compris.
+    @property
+    def cost(self) -> int:
+        return self.base_cost if self.cost_read is None else self.cost_read
+
     @property
     def attack(self) -> int:
         return self.base_attack if self.attack_read is None else self.attack_read
@@ -325,6 +451,36 @@ class BoardCard:
     @property
     def stats_are_live(self) -> bool:
         return self.attack_read is not None or self.health_read is not None
+
+    @property
+    def cost_is_live(self) -> bool:
+        """Le coût utilisé vient-il de l'écran plutôt que de card_sets ?"""
+        return self.cost_read is not None
+
+    @property
+    def cost_gap(self) -> Optional[int]:
+        """
+        Écart entre le coût affiché et le coût de base, ou None.
+
+        Négatif = la carte est RÉDUITE, positif = elle coûte plus cher que
+        sur le papier. N'a de sens que pour une carte connue de card_sets :
+        pour une carte inconnue le coût de base vaut 0, et l'écart ne
+        mesurerait que cette absence.
+        """
+        if self.cost_read is None or not self.known:
+            return None
+        return self.cost_read - self.base_cost
+
+    @property
+    def cost_is_known(self) -> bool:
+        """
+        A-t-on un coût digne de confiance ?
+
+        Une carte absente de card_sets a un coût de base à 0, ce qui la
+        ferait passer pour gratuite. Elle n'est jouable que si son coût a
+        été LU à l'écran.
+        """
+        return self.known or self.cost_read is not None
 
     # --- type de carte -------------------------------------------------
     @property
@@ -347,6 +503,19 @@ class BoardCard:
     def is_landmark(self) -> bool:
         return self.type == "Landmark"
 
+    @property
+    def is_champion(self) -> bool:
+        return self.is_unit and self.supertype == "Champion"
+
+    @property
+    def is_leveled(self) -> bool:
+        """
+        Champion monté de niveau. Dans card_sets, la version de niveau 2
+        est une carte NON collectionnable au code suffixé (…T1, …T2), et
+        c'est ce code-là que l'API rapporte une fois le champion monté.
+        """
+        return self.is_champion and not self.collectible
+
     # --- mots-clés -----------------------------------------------------
     def has(self, keyword: str) -> bool:
         """Teste un mot-clé indifféremment sur le libellé affiché ou sur
@@ -354,7 +523,8 @@ class BoardCard:
         target = _normalize_keyword(keyword)
         return any(
             _normalize_keyword(existing) == target
-            for existing in (*self.keywords, *self.keyword_refs)
+            for existing in (*self.keywords, *self.keyword_refs,
+                             *self.keywords_lus)
         )
 
     # --- points de saisie ----------------------------------------------
@@ -365,31 +535,98 @@ class BoardCard:
 
         Voir CARD_GRAB_Y_RATIO : on vise le haut de la carte, seule partie
         garantie visible pour une carte en main.
+
+        EN X, LE MILIEU DE CE QUI EST VISIBLE, pas de la carte. Dans une
+        main pleine les cartes se recouvrent (06/09/2026, 9 cartes : 175 px
+        de large, espacées de 99 px — la voisine de DROITE couvre les trois
+        quarts de la carte) ; viser le centre géométrique, c'est viser à
+        11 px de la voisine, et c'est elle que le jeu attrape (« The List »
+        partie sur la pile à la place de Buhru Lookout, quatorze fois).
         """
         left, top, right, bottom = self.box
-        return ((left + right) // 2, int(top + CARD_GRAB_Y_RATIO * (bottom - top)))
+        edge = right if self.visible_right is None else min(right, self.visible_right)
+        return ((left + edge) // 2, int(top + CARD_GRAB_Y_RATIO * (bottom - top)))
 
     # --- mots-clés (suite) ----------------------------------------------
     @property
     def can_block(self) -> bool:
-        return not (self.has("CantBlock") or self.has("Immobile"))
+        # `stunned` est le PREMIER état lu à l'écran plutôt que dans
+        # card_sets : une unité étourdie ne peut ni bloquer ni attaquer,
+        # et rien dans l'API ne le dit. Le reste ne change pas — ce sont
+        # toujours les deux mots-clés IMPRIMÉS.
+        return not (self.stunned or self.has("CantBlock") or self.has("Immobile"))
 
     @property
     def can_attack(self) -> bool:
-        return not (self.has("CantAttack") or self.has("Immobile"))
+        return not (self.stunned or self.has("CantAttack") or self.has("Immobile"))
 
     def __str__(self) -> str:
         # L'astérisque signale une stat lue à l'écran plutôt que déduite
         # de card_sets : indispensable pour distinguer « le bot voit un
         # 5/5 » de « le bot suppose un 5/5 » quand une décision surprend.
         mark = "*" if self.stats_are_live else ""
+        cost_mark = "*" if self.cost_is_live else ""
         suffix = "" if self.known else " (inconnue)"
-        return f"{self.name} ({self.cost}) {self.attack}/{self.health}{mark}{suffix}"
+        return (
+            f"{self.name} ({self.cost}{cost_mark}) "
+            f"{self.attack}/{self.health}{mark}{suffix}"
+        )
 
 
 # ============================================================
 # CLASSIFICATION EN ZONES
 # ============================================================
+
+# Référence de géométrie : position des deux nexus, en ratio depuis le
+# bas, dans la configuration où ZONE_BANDS a été validée. Enregistrée par
+# `python game_state.py calibrate-zones`.
+#
+# POURQUOI : ZONE_BANDS est exprimée en fraction de la HAUTEUR DE FENÊTRE,
+# ce qui suppose que le plateau occupe toujours la même proportion de
+# l'écran. C'est faux dès que le rapport d'aspect change. Les deux nexus,
+# eux, sont donnés par l'API et encadrent le plateau : en mesurant leur
+# écartement, on sait de combien le plateau a grandi ou rétréci, et on
+# rééchelonne les bandes en conséquence.
+#
+# Tant que la calibration n'a pas eu lieu, rien ne change : on ne va pas
+# rééchelonner à partir d'une référence inventée.
+ZONE_CALIBRATION_KEY = "zone_nexus_reference"
+
+
+def nexus_span(rectangles: list, window: Window):
+    """
+    (ratio du nexus allié, ratio du nexus adverse), depuis le BAS.
+    None si l'un des deux manque.
+    """
+    centres = {}
+    for rect in rectangles:
+        if rect.get("CardCode") == lor_api.NEXUS_CARD_CODE:
+            centre = rect["TopLeftY"] - rect["Height"] / 2
+            centres[bool(rect.get("LocalPlayer"))] = centre / window.height
+    if True in centres and False in centres:
+        return (centres[True], centres[False])
+    return None
+
+
+def rescale_bands(bands: tuple, reference: tuple, current: tuple) -> tuple:
+    """
+    Transpose des bandes mesurées dans une géométrie de référence vers la
+    géométrie courante, en s'appuyant sur l'écartement des nexus.
+
+    Une bande à mi-chemin entre les deux nexus le reste, quelle que soit
+    la résolution.
+    """
+    ref_low, ref_high = reference
+    cur_low, cur_high = current
+    ref_span = ref_high - ref_low
+    cur_span = cur_high - cur_low
+    if abs(ref_span) < 1e-6 or abs(cur_span) < 1e-6:
+        return bands
+    return tuple(
+        (cur_low + (bound - ref_low) / ref_span * cur_span, name)
+        for bound, name in bands
+    )
+
 
 def zone_ratio(rect: dict, window: Window) -> float:
     """
@@ -403,10 +640,10 @@ def zone_ratio(rect: dict, window: Window) -> float:
     return anchor / window.height
 
 
-def classify_zone(rect: dict, window: Window) -> str:
+def classify_zone(rect: dict, window: Window, bands: tuple = ZONE_BANDS) -> str:
     """Zone du plateau déduite de la hauteur du rectangle."""
     ratio = zone_ratio(rect, window)
-    for upper_bound, name in ZONE_BANDS:
+    for upper_bound, name in bands:
         if ratio < upper_bound:
             return name
     return FALLBACK_ZONE
@@ -451,10 +688,80 @@ def group_by_zone(cards: Iterable[BoardCard]) -> dict:
     buckets = {name: [] for name in ZONE_ORDER}
     for card in cards:
         buckets.setdefault(card.zone, []).append(card)
-    return {
+    zones = {
         name: tuple(sorted(items, key=lambda c: c.center[0]))
         for name, items in buckets.items()
     }
+    mark_hand_overlap(zones.get("hand", ()))
+    return zones
+
+
+# En dessous de cette part visible, on ne réduit plus la zone de saisie :
+# un recouvrement quasi total serait une lecture en cours d'animation, et
+# viser une bande de quelques pixels raterait à coup sûr.
+HAND_MIN_VISIBLE_RATIO = 0.25
+
+
+def mark_hand_overlap(hand) -> None:
+    """
+    Pose `visible_right` sur chaque carte de la main que sa voisine de
+    droite recouvre. Le jeu dessine la main en éventail, chaque carte SOUS
+    la suivante : la partie qui reste cliquable est entre son bord gauche
+    et le bord gauche de la voisine.
+    """
+    for card, following in zip(hand, hand[1:]):
+        left, _, right, _ = card.box
+        next_left = following.box[0]
+        if next_left < right and next_left - left >= (right - left) * HAND_MIN_VISIBLE_RATIO:
+            card.visible_right = next_left
+        else:
+            card.visible_right = None
+    if hand:
+        hand[-1].visible_right = None
+
+
+# Les trois bandes que les unités traversent quand elles chargent. Une
+# unité qui s'y trouve est engagée dans un combat ; la seule question est
+# de savoir dans quel camp.
+COMBAT_BANDS = ("attack", "stack", "enemy_attack")
+
+
+def reconcile_combat_rows(cards: Iterable[BoardCard]) -> list:
+    """
+    Range les unités avancées selon leur CAMP, et non selon la bande où
+    leur hauteur les a fait tomber. Modifie `card.zone` sur place et
+    renvoie la liste.
+
+    Pourquoi c'est nécessaire. Une unité qui charge avance vers la ligne
+    médiane, et la bande d'arrivée fait quinze centièmes de hauteur pour
+    un mouvement dont l'amplitude dépend de l'animation, de la taille de
+    la carte et du décalage du plateau. Il suffit de peu pour qu'un
+    attaquant adverse dépasse et retombe dans `stack`, ou reste court et
+    soit compté dans `enemy_board`. Le bot lisait alors « sort en
+    attente » ou « rien à bloquer » au moment précis où il fallait poser
+    des bloqueurs.
+
+    La hauteur est une mesure bruitée ; le camp, lui, est donné par
+    l'API et ne se trompe jamais. On garde donc la hauteur pour dire
+    « cette unité est avancée » et le camp pour dire « de quel côté ».
+
+    La bande `stack` est la seule ambiguë, et l'ambiguïté est facile à
+    lever : on n'y voit JAMAIS d'unité. Une carte qui n'est pas une
+    unité — ou dont on ignore le type — y reste, et sera traitée comme
+    un sort : c'est le repli le moins destructeur, puisqu'il conduit à
+    passer et non à traîner des cartes au hasard.
+    """
+    cards = list(cards)
+    for card in cards:
+        if card.zone in COMBAT_BANDS and card.is_unit:
+            card.zone = "attack" if card.local else "enemy_attack"
+        elif card.zone in COMBAT_BANDS and (card.is_spell or card.is_ability):
+            # La réciproque : un SORT (ou une compétence) ne se tient jamais
+            # dans une rangée d'attaque. Où qu'il tombe en hauteur, il est
+            # sur la pile — sinon un sort adverse lu dans « enemy_attack »
+            # passait pour une attaque, et dans « attack » pour la nôtre.
+            card.zone = "stack"
+    return cards
 
 
 # ============================================================
@@ -477,6 +784,67 @@ def _mask_pixel_count(
     return int(cv2.countNonZero(mask)), int(mask.size)
 
 
+# LE TEXTE DU BOUTON DIT LA PHASE. Sur la capture d'Ewan
+# (calibration_crops/orbe_de_tour_zone.png), le bouton bleu affiche
+# « RÉSOUDRE » pendant une fenêtre de réponse : la couleur dit « à toi de
+# cliquer », le texte dit POURQUOI. Un template par libellé dans
+# assets/orb/ (`resoudre.png` est fourni ; `python game_state.py cut-button
+# fin_du_tour` en ajoute d'autres). Le libellé lu est un TÉMOIN de plus :
+# « resoudre » confirme SPELL_STACK même si l'API ne rapportait pas le sort.
+# `cible.png` (« SÉLECTIONNER LA CIBLE », tiré de la capture bloquée du
+# 05/09/2026) : le jeu attend que NOUS désignions une cible — un « OK » n'y
+# fait rien, c'est une annulation qu'il faut (actions.respond_to_stack).
+TURN_BUTTON_DIR = lor_api.PROJECT_ROOT / "assets" / "orb"
+TURN_BUTTON_THRESHOLD = 0.80
+_BUTTON_TEMPLATES: Optional[dict] = None
+_BUTTON_TEMPLATES_STAMP: Optional[tuple] = None
+
+
+def _button_templates() -> dict:
+    """{libellé: template gris}, rechargé si le dossier change."""
+    global _BUTTON_TEMPLATES, _BUTTON_TEMPLATES_STAMP
+    try:
+        files = sorted(TURN_BUTTON_DIR.glob("*.png"))
+    except OSError:
+        files = []
+    stamp = tuple((f.name, f.stat().st_mtime) for f in files)
+    if _BUTTON_TEMPLATES is None or stamp != _BUTTON_TEMPLATES_STAMP:
+        templates = {}
+        for path in files:
+            image = cv2.imread(str(path))
+            if image is not None:
+                templates[path.stem] = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        _BUTTON_TEMPLATES, _BUTTON_TEMPLATES_STAMP = templates, stamp
+    return _BUTTON_TEMPLATES
+
+
+def read_turn_button(screen: np.ndarray, window: Window) -> tuple:
+    """
+    Le libellé du bouton de tour : (libellé|None, meilleur score).
+
+    Comparaison en niveaux de gris sur la zone de l'orbe, un template par
+    libellé connu. Sans template ou sous le seuil : (None, score).
+    """
+    templates = _button_templates()
+    if not templates:
+        return None, 0.0
+    crop = lor_api.crop_box(screen, window.rel_box(TURN_ORB_REGION))
+    if crop is None or crop.size == 0:
+        return None, 0.0
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    best, best_score = None, 0.0
+    for label, template in templates.items():
+        th, tw = template.shape[:2]
+        if th > gray.shape[0] or tw > gray.shape[1]:
+            continue
+        score = float(cv2.matchTemplate(gray, template, cv2.TM_CCOEFF_NORMED).max())
+        if score > best_score:
+            best, best_score = label, score
+    if best_score < TURN_BUTTON_THRESHOLD:
+        return None, best_score
+    return best, best_score
+
+
 def turn_orb_is_active(screen: np.ndarray, window: Window) -> bool:
     """
     True si l'orbe de fin de tour est colorée (bleue) : c'est à nous
@@ -495,14 +863,67 @@ _TEMPLATE_CACHE: dict = {}
 
 def load_template(path) -> Optional[np.ndarray]:
     """Charge un template BGR, avec cache invalidé par la date du fichier."""
+    loaded = load_template_with_mask(path)
+    return None if loaded is None else loaded[0]
+
+
+def load_template_with_mask(path) -> Optional[tuple]:
+    """
+    Charge un template et son MASQUE : (BGR, masque ou None).
+
+    Le masque est le canal alpha du PNG quand il en a un — les pixels
+    transparents ne comptent pas dans la correspondance. C'est ce qui
+    permet de chercher l'ÉPÉE et non « l'épée devant une gemme à 3 de
+    mana de sort » : le décor derrière le jeton change (compteur de mana,
+    reflets des rouages) et un template qui l'embarque voit son score
+    s'effondrer dès que le compteur n'est plus celui de la capture. Vu en
+    jeu le 02/09/2026 : jeton jamais reconnu, DEFEND_TURN permanent.
+    """
     path = Path(path)
     if not path.exists():
         return None
     key = (str(path), path.stat().st_mtime_ns)
     if key not in _TEMPLATE_CACHE:
         _TEMPLATE_CACHE.clear()
-        _TEMPLATE_CACHE[key] = cv2.imread(str(path))
+        raw = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+        if raw is None:
+            _TEMPLATE_CACHE[key] = None
+        elif raw.ndim == 3 and raw.shape[2] == 4:
+            mask = raw[:, :, 3]
+            # Un alpha uniformément opaque n'est pas un masque.
+            _TEMPLATE_CACHE[key] = (
+                np.ascontiguousarray(raw[:, :, :3]),
+                mask if int(mask.min()) < 255 else None,
+            )
+        elif raw.ndim == 2:
+            _TEMPLATE_CACHE[key] = (cv2.cvtColor(raw, cv2.COLOR_GRAY2BGR), None)
+        else:
+            _TEMPLATE_CACHE[key] = (raw, None)
     return _TEMPLATE_CACHE[key]
+
+
+def icon_mask(crop: np.ndarray) -> np.ndarray:
+    """
+    Masque de l'ICÔNE dans un crop : les pixels orangés et saturés de
+    l'épée, nettoyés (ouverture), réduits à la plus grande composante
+    connexe, puis refermés. Les flammes qui la coiffent sont volontairement
+    exclues : elles s'animent, et une forme qui bouge ne peut pas être un
+    repère. C'est ce masque qui devient le canal alpha du template.
+    """
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, np.array(ICON_HSV_LOW), np.array(ICON_HSV_HIGH))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(mask)
+    if count > 1:
+        biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        mask = np.where(labels == biggest, 255, 0).astype(np.uint8)
+    return cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+
+
+# Teintes de l'épée (HSV OpenCV, H sur 0-179) : orange à jaune, franc et
+# lumineux. Le laiton du décor est plus terne (S plus faible).
+ICON_HSV_LOW = (5, 110, 120)
+ICON_HSV_HIGH = (38, 255, 255)
 
 
 @dataclass
@@ -514,6 +935,7 @@ class TokenMatch:
     position: Optional[tuple] = None   # centre du match, coords bureau
     ours: Optional[bool] = None        # None si indéterminable
     template_missing: bool = False
+    scale: float = 1.0                 # facteur appliqué au template pour ce score
 
     @property
     def side(self) -> str:
@@ -522,6 +944,37 @@ class TokenMatch:
         if self.ours is None:
             return "?"
         return "nous" if self.ours else "adversaire"
+
+
+def nexus_points(rectangles: list, window: Window) -> tuple:
+    """
+    Centres écran des deux nexus : (le nôtre, celui d'en face).
+
+    Le nexus adverse est une cible de sort toujours valide : c'est le
+    repli qui évite de rester coincé en mode ciblage quand aucune unité
+    ne convient.
+    """
+    centres = {}
+    for rect in rectangles:
+        if rect.get("CardCode") == lor_api.NEXUS_CARD_CODE:
+            centres[bool(rect.get("LocalPlayer"))] = lor_api.rect_center_screen(rect, window)
+    return centres.get(True), centres.get(False)
+
+
+def nexus_boxes(rectangles: list, window: Window) -> tuple:
+    """
+    (rectangle écran du nôtre, rectangle écran de celui d'en face).
+
+    L'API donne la POSITION des deux nexus. C'est ce qui permet de lire
+    leurs PV sans coordonnées en dur : le chiffre se découpe relativement
+    au rectangle du nexus, comme les badges de stats des cartes. Une seule
+    calibration sert alors pour les deux camps et pour toute résolution.
+    """
+    boxes = {}
+    for rect in rectangles:
+        if rect.get("CardCode") == lor_api.NEXUS_CARD_CODE:
+            boxes[bool(rect.get("LocalPlayer"))] = lor_api.rect_to_screen_box(rect, window)
+    return boxes.get(True), boxes.get(False)
 
 
 def nexus_midline_y(rectangles: list, window: Window) -> float:
@@ -549,9 +1002,15 @@ def find_attack_token(
     threshold: float = ATTACK_TOKEN_MATCH_THRESHOLD,
     region: tuple = ATTACK_TOKEN_SEARCH_REGION,
     template_path=ATTACK_TOKEN_TEMPLATE,
+    scales: tuple = ATTACK_TOKEN_SCALES,
 ) -> TokenMatch:
     """
-    Cherche l'icône d'épée par correspondance de forme.
+    Cherche l'icône d'épée par correspondance de forme, à plusieurs
+    échelles (cf. ATTACK_TOKEN_SCALES) ; la meilleure est retenue. Le
+    balayage se fait sur l'image réduite et la lecture est confirmée en
+    pleine résolution (cf. ATTACK_TOKEN_COARSE) : le score rendu est
+    donc toujours un score PLEINE RÉSOLUTION, de même nature qu'avant le
+    10/11/2026 — seul son coût a changé.
 
     Renvoie toujours le score, même en cas d'échec : c'est ce qui permet
     de régler le seuil en connaissance de cause. Un score de 0.78 quand
@@ -562,9 +1021,10 @@ def find_attack_token(
     `ours` compare la position du match à la ligne médiane des nexus :
     notre moitié est celle du BAS, donc les Y les plus grands.
     """
-    template = load_template(template_path)
-    if template is None:
+    loaded = load_template_with_mask(template_path)
+    if loaded is None:
         return TokenMatch(found=False, score=0.0, template_missing=True)
+    template, mask = loaded
 
     box = window.rel_box(region)
     crop = lor_api.crop_box(screen, box)
@@ -572,29 +1032,184 @@ def find_attack_token(
         LOGGER.warning("Région de recherche du jeton hors cadre : %s", box)
         return TokenMatch(found=False, score=0.0)
 
-    t_h, t_w = template.shape[:2]
     c_h, c_w = crop.shape[:2]
-    if t_h > c_h or t_w > c_w:
+    if template.shape[0] > c_h or template.shape[1] > c_w:
         LOGGER.warning(
             "Template (%dx%d) plus grand que la région de recherche (%dx%d) : "
             "élargis ATTACK_TOKEN_SEARCH_REGION ou recadre le template.",
-            t_w, t_h, c_w, c_h,
+            template.shape[1], template.shape[0], c_w, c_h,
         )
         return TokenMatch(found=False, score=0.0)
 
-    result = cv2.matchTemplate(crop, template, cv2.TM_CCOEFF_NORMED)
-    _, score, _, location = cv2.minMaxLoc(result)
-    score = float(score)
+    # DEUX ÉTAGES, cf. ATTACK_TOKEN_COARSE : toutes les échelles sur
+    # l'image réduite, puis les meilleurs PICS confirmés en pleine
+    # résolution. Aucune corrélation pleine résolution ne porte plus sur
+    # toute la région.
+    best = _best_match(crop, template, mask, scales)
+    score, location, (t_w, t_h), scale = best
 
     if score < threshold:
-        return TokenMatch(found=False, score=score)
+        return TokenMatch(found=False, score=score, scale=scale)
 
     centre = (
         box[0] + location[0] + t_w // 2,
         box[1] + location[1] + t_h // 2,
     )
     ours = None if midline_y is None else centre[1] > midline_y
-    return TokenMatch(found=True, score=score, position=centre, ours=ours)
+    return TokenMatch(found=True, score=score, position=centre, ours=ours, scale=scale)
+
+
+def _coarse_reduction(template, scales: tuple) -> float:
+    """
+    Facteur de réduction du relevé grossier, ou 1.0 s'il ne faut pas
+    réduire. Le plus petit côté du template, à la plus petite échelle,
+    doit rester au-dessus de `ATTACK_TOKEN_COARSE_MIN_SIDE`.
+    """
+    cote = min(template.shape[:2]) * min(scales or (1.0,))
+    if cote <= 0:
+        return 1.0
+    reduction = max(ATTACK_TOKEN_COARSE, ATTACK_TOKEN_COARSE_MIN_SIDE / cote)
+    return 1.0 if reduction >= 1.0 else reduction
+
+
+def _best_match(crop, template, mask, scales: tuple) -> tuple:
+    """
+    Le meilleur matching du template dans `crop`, toutes échelles
+    confondues : (score, position, (largeur, hauteur), échelle).
+
+    Le relevé est fait sur une image RÉDUITE — sept corrélations masquées
+    pour le prix d'un sixième — puis les meilleurs pics sont confirmés en
+    PLEINE résolution dans une petite fenêtre. Le score rendu est donc
+    toujours un score pleine résolution, comparable à celui d'avant le
+    10/11/2026 ; seul son COÛT a changé.
+    """
+    scales = tuple(scales) or (1.0,)
+    reduction = _coarse_reduction(template, scales)
+    reduit = crop if reduction >= 1.0 else cv2.resize(
+        crop, None, fx=reduction, fy=reduction, interpolation=cv2.INTER_AREA
+    )
+
+    # CHAQUE ÉCHELLE GARDE SES PICS, et c'est la leçon du 10/11/2026 :
+    # une première version ne retenait que l'échelle la mieux notée sur
+    # l'image réduite, puis la confirmait seule. Elle a PERDU 2 jetons
+    # sur 118 au balayage des captures réelles — le relevé grossier y
+    # préférait 1.05, et la lecture pleine résolution tombait à 0.48 là
+    # où l'échelle 1.0 donnait 0.62. Un classement grossier ne décide
+    # pas d'une échelle : il désigne des ENDROITS à regarder de près.
+    releve = []
+    for scale in scales:
+        carte, taille = _score_map(reduit, template, mask, scale * reduction)
+        if carte is None:
+            continue
+        releve.append((carte, taille, scale))
+
+    if not releve:                          # template plus grand que la région
+        return _match_at_scale(crop, template, mask, scales[0])
+    if reduction >= 1.0:                    # pas de réduction : le relevé EST la lecture
+        meilleur = (-1.0, (0, 0), (0, 0), scales[0])
+        for carte, taille, scale in releve:
+            _, score, _, location = cv2.minMaxLoc(carte)
+            if score > meilleur[0]:
+                meilleur = (float(score), location, taille, scale)
+        return meilleur
+
+    meilleur = (-1.0, (0, 0), (0, 0), scales[0])
+    for carte, taille, scale in releve:
+        for pic in _coarse_peaks(carte, taille, ATTACK_TOKEN_PEAKS):
+            fenetre = _confirm_window(crop.shape, template, scale, pic, reduction)
+            if fenetre is None:
+                continue
+            x0, y0, x1, y1 = fenetre
+            score, location, dims, _ = _match_at_scale(
+                crop[y0:y1, x0:x1], template, mask, scale
+            )
+            if score > meilleur[0]:
+                meilleur = (score, (x0 + location[0], y0 + location[1]), dims, scale)
+    return meilleur
+
+
+def _coarse_peaks(carte: np.ndarray, taille: tuple, count: int) -> list:
+    """
+    Les `count` pics du relevé grossier, du meilleur au moins bon, en
+    supprimant autour de chacun la largeur d'un template (un même pic
+    déborde sur ses voisins et les trois meilleurs pixels d'une carte de
+    scores sont presque toujours le MÊME pic).
+    """
+    t_w, t_h = taille
+    travail = carte.copy()
+    pics = []
+    for _ in range(max(1, count)):
+        _, score, _, (x, y) = cv2.minMaxLoc(travail)
+        if score <= -1.0:
+            break
+        pics.append((x, y))
+        travail[max(0, y - t_h):y + t_h, max(0, x - t_w):x + t_w] = -1.0
+    return pics
+
+
+def _confirm_window(shape: tuple, template, scale: float, pic: tuple,
+                    reduction: float) -> Optional[tuple]:
+    """
+    Fenêtre pleine résolution (x0, y0, x1, y1) autour d'un pic du relevé
+    grossier, assez large pour contenir le template plus la marge, et
+    recadrée dans l'image. None si le template n'y tient pas.
+    """
+    hauteur, largeur = shape[:2]
+    t_w = max(1, int(round(template.shape[1] * scale)))
+    t_h = max(1, int(round(template.shape[0] * scale)))
+    if t_w > largeur or t_h > hauteur:
+        return None
+    marge = ATTACK_TOKEN_CONFIRM_MARGIN
+    x0 = int(round(pic[0] / reduction)) - marge
+    y0 = int(round(pic[1] / reduction)) - marge
+    x0 = min(max(0, x0), largeur - t_w)
+    y0 = min(max(0, y0), hauteur - t_h)
+    x1 = min(largeur, x0 + t_w + 2 * marge)
+    y1 = min(hauteur, y0 + t_h + 2 * marge)
+    return (x0, y0, x1, y1)
+
+
+def _score_map(crop, template, mask, scale) -> tuple:
+    """
+    La carte des scores du template redimensionné à `scale` dans `crop` :
+    (carte|None, (largeur, hauteur)). None si le template redimensionné
+    déborde du crop.
+    """
+    if abs(scale - 1.0) < 1e-9:
+        tpl, msk = template, mask
+    else:
+        size = (max(1, int(round(template.shape[1] * scale))),
+                max(1, int(round(template.shape[0] * scale))))
+        tpl = cv2.resize(template, size, interpolation=cv2.INTER_AREA)
+        msk = None if mask is None else cv2.threshold(
+            cv2.resize(mask, size, interpolation=cv2.INTER_AREA), 127, 255,
+            cv2.THRESH_BINARY,
+        )[1]
+    t_h, t_w = tpl.shape[:2]
+    if t_h > crop.shape[0] or t_w > crop.shape[1]:
+        return (None, (t_w, t_h))
+    if msk is not None:
+        # Corrélation sur les seuls pixels de l'épée : le fond du template
+        # n'entre pas dans le score. Sur une zone unie, la variante masquée
+        # peut rendre NaN/inf — ramenés à 0 avant de chercher le max.
+        result = cv2.matchTemplate(crop, tpl, cv2.TM_CCOEFF_NORMED, mask=msk)
+        result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+    else:
+        result = cv2.matchTemplate(crop, tpl, cv2.TM_CCOEFF_NORMED)
+    return (result, (t_w, t_h))
+
+
+def _match_at_scale(crop, template, mask, scale) -> tuple:
+    """
+    Un matching du template redimensionné à `scale` dans `crop`. Rend
+    (score, position, (largeur, hauteur), scale). Score -1 si le template
+    redimensionné déborde du crop.
+    """
+    carte, taille = _score_map(crop, template, mask, scale)
+    if carte is None:
+        return (-1.0, (0, 0), taille, scale)
+    _, score, _, location = cv2.minMaxLoc(carte)
+    return (float(score), location, taille, scale)
 
 
 # ============================================================
@@ -649,6 +1264,134 @@ def _badge_crop(screen: np.ndarray, card: "BoardCard", relative: tuple):
     )
 
 
+# Cache des lectures de badge, indexé sur les PIXELS du badge lui-même.
+#
+# La clé est le contenu de l'image, pas la carte : si les pixels du badge
+# sont identiques à une lecture précédente, le chiffre l'est forcément
+# aussi. Le cache est donc toujours juste, sans expiration ni
+# invalidation à gérer — contrairement à un cache par carte, qui servirait
+# une valeur périmée dès qu'une unité prend des dégâts.
+#
+# En pratique la plupart des unités ne changent pas de stats entre deux
+# décisions, et c'est là que l'économie se fait : l'OCR est de loin le
+# poste le plus cher de la boucle.
+_BADGE_CACHE: dict = {}
+BADGE_CACHE_MAX = 512
+# BORNES DE PLAUSIBILITÉ — UNE SEULE SOURCE PAR GRANDEUR.
+# Il y en avait trois pour la même chose : `_MAX_FOR_TAG["stat"] = 30`,
+# `detect_chiffres.STAT_MAX = 99`, et `COST_MAX = 12` contre
+# `_MAX_FOR_TAG["cost"] = 15`. La lecture par forme était bornée à 30, le
+# secours easyocr à 99 — et c'est 73 qui est sorti pour une unité 3/3
+# (04/11/2026), jugée increvable et envoyée attaquer. Deux bornes pour une
+# grandeur, c'est l'absence de borne : tout ce qui lit un badge passe
+# désormais par celles-ci.
+STAT_READ_MAX = 30     # attaque ou PV d'une unité, buffs compris
+COST_MAX = 12          # le coût le plus élevé du jeu ; borne le bruit
+_MAX_FOR_TAG = {"stat": STAT_READ_MAX, "cost": COST_MAX}
+
+
+def _cached_ocr(crop, name, ocr_number, tag: str = "stat"):
+    # `tag` sépare les familles de lecture dans le cache. Deux badges
+    # différents peuvent avoir exactement les mêmes pixels (un crop noir,
+    # un crop vide) alors qu'ils passent par des OCR différents — la gemme
+    # de mana par `read_digits`, les stats par `ocr_number`. Sans le tag,
+    # la première lecture servirait de réponse à l'autre famille.
+    if crop is None or crop.size == 0:
+        return None
+    key = (tag, crop.shape, crop.tobytes())
+    if key in _BADGE_CACHE:
+        return _BADGE_CACHE[key]
+    # LA FORME AVANT L'OCR. `digits.read_number` reconnaît la police du jeu
+    # en une milliseconde ; quand il est SÛR, l'OCR (100-300 ms) n'est pas
+    # appelé. Quand il doute, l'OCR tranche, et son candidat ne sert qu'en
+    # dernier recours — jamais un chiffre douteux à la place d'un lu.
+    limite = _MAX_FOR_TAG.get(tag, 99)
+    value = digits.read_number(crop, maximum=limite)
+    if value is None:
+        # LA BORNE EST IMPOSÉE ICI, pas déléguée : `ocr_number` a sa propre
+        # borne par défaut (STAT_MAX = 99, la bonne pour les PV du nexus) et
+        # rendait donc 73 pour une stat. On la lui passe, ET on revérifie —
+        # une valeur hors borne vaut un échec de lecture, pas une décision.
+        value = ocr_number(crop, name=name, maximum=limite)
+        if value is not None and value > limite:
+            LOGGER.warning("Lecture %s invraisemblable (%s > %s) : ignorée.",
+                           name, value, limite)
+            value = None
+        if value is None:
+            value = digits.read_number(crop, maximum=limite, loose=True)
+    if len(_BADGE_CACHE) >= BADGE_CACHE_MAX:
+        _BADGE_CACHE.clear()
+    _BADGE_CACHE[key] = value
+    return value
+
+
+def badge_cache_info() -> tuple:
+    """(entrées en cache, taille maximale) — pour le diagnostic."""
+    return len(_BADGE_CACHE), BADGE_CACHE_MAX
+
+
+# La barre d'icônes n'existe que sur les unités DU PLATEAU : la main n'en
+# a pas, et une carte au centre pendant une désignation est lue dans les
+# bandes d'attaque (les deux horloges).
+#
+# CE SONT LES CLÉS DE `ZONE_ORDER` / `group_by_zone` (déjà utilisées en dur
+# plus bas : `zones["attack"]`, `zones["enemy_attack"]`) — PAS les alias de
+# propriété `GameSnapshot.attack_row` / `.enemy_attack_row`, qui n'existent
+# pas comme clés de ce dict : ne pas « corriger » vers `attack_row`.
+ZONES_DE_PLATEAU = ("board", "attack", "enemy_board", "enemy_attack")
+
+
+def lire_les_mots_cles(screen, zones: dict) -> int:
+    """
+    Pose `keywords_lus` sur les unités du plateau, au vu de l'écran.
+
+    Appelée une seule fois par instantané, là où la capture est DÉJÀ
+    payée — et seulement en partie en cours hors mulligan, c'est-à-dire
+    là où une unité de plateau existe.
+
+    Ne lève jamais : une lecture impossible laisse le tuple vide, et vide
+    veut dire « on n'a pas regardé ».
+
+    COÛT MESURÉ (20/11/2026), sur `captures_reference/mots_cles/
+    scene_20261120_201157.png`, 5 centres d'unité, commande :
+        python -c "import time,cv2,mots_cles_ecran as m; img=cv2.imread(...);
+        pts=[...]; t=time.perf_counter(); [m.identifier(img,p) for p in pts]"
+
+    AVANT correctif (`mots_cles_ecran.identifier` segmentait trois fois la
+    même bande par glyphe — voir `_icones_et_masque`) : 5 exécutions
+    fraîches 57.1-62.8 ms (moyenne 59.7 ms) ; dans un même processus,
+    gabarits déjà en cache (2e/3e appel, le régime réel pendant un
+    combat) : 49.8-50.9 ms.
+
+    APRÈS correctif (segmentation calculée UNE fois par unité) : 5
+    exécutions fraîches 50.7-52.5 ms (moyenne 51.5 ms) ; gabarits en
+    cache : 43.1-43.6 ms.
+
+    **RESTE marginalement au-dessus du budget de 50 ms fixé pour cette
+    tâche, à froid seulement** (à chaud — le régime réel — c'est sous la
+    barre). Décision du contrôleur (20/11/2026) : commiter quand même,
+    avec l'ÉTALON qui manquait au seuil de 50 ms. L'instantané du bot
+    coûte déjà ~2200 ms par itération, dont ~900 ms pour la seule
+    recherche multi-échelle du jeton d'attaque : cette lecture y pèse
+    **2,3 % à froid (51,5/2200), 2,0 % à chaud (43,4/2200)**, contre
+    2,7 % avant correctif. Le seuil de 50 ms visait à attraper une
+    surprise d'un ORDRE DE GRANDEUR (500 ms), pas à bloquer à 51-57 ms.
+    """
+    if screen is None:
+        return 0
+    enrichies = 0
+    for nom in ZONES_DE_PLATEAU:
+        for carte in zones.get(nom, ()) or ():
+            try:
+                lus = mots_cles_ecran.identifier(screen, carte.center)
+            except Exception:   # une lecture ratée n'arrête pas un combat
+                continue
+            if lus:
+                carte.keywords_lus = lus
+                enrichies += 1
+    return enrichies
+
+
 def enrich_with_live_stats(
     snapshot: "GameSnapshot",
     screen: Optional[np.ndarray] = None,
@@ -656,6 +1399,10 @@ def enrich_with_live_stats(
 ) -> "GameSnapshot":
     """
     Remplit `attack_read` / `health_read` des unités en jeu par OCR.
+
+    `zones` restreint le travail à ce dont la décision a besoin : lire les
+    quatre zones avant une attaque, alors que seul notre banc compte, coûte
+    le double pour rien.
 
     Modifie l'instantané sur place et le renvoie. Une lecture qui échoue
     laisse la valeur à None, et la carte retombe alors sur sa stat de
@@ -677,14 +1424,186 @@ def enrich_with_live_stats(
         for card in snapshot.zones.get(zone, ()):
             if not card.is_unit:
                 continue
-            card.attack_read = ocr_number(
-                _badge_crop(screen, card, ATTACK_BADGE_REL), name=f"{card.code}_atk"
+            card.attack_read = _cached_ocr(
+                _badge_crop(screen, card, ATTACK_BADGE_REL), f"{card.code}_atk", ocr_number
             )
-            card.health_read = ocr_number(
-                _badge_crop(screen, card, HEALTH_BADGE_REL), name=f"{card.code}_hp"
+            card.health_read = _cached_ocr(
+                _badge_crop(screen, card, HEALTH_BADGE_REL), f"{card.code}_hp", ocr_number
             )
 
     return snapshot
+
+
+# ============================================================
+# COÛT EN MANA LU À L'ÉCRAN
+# ============================================================
+# card_sets donne le coût IMPRIMÉ sur la carte. Ce n'est pas celui qu'on
+# paie. Une réduction (« coûte 2 de moins ce tour-ci »), une majoration
+# adverse, un effet de terrain : le chiffre affiché dans la gemme change,
+# le cardCode non. Décider avec le coût de base, c'est passer son tour
+# sans jouer une carte pourtant gratuite, ou tenter une pose qu'on ne peut
+# pas payer et la mettre de côté pour rien.
+#
+# C'est exactement le raisonnement déjà appliqué aux stats (attaque / PV) :
+# la valeur AFFICHÉE prime sur la valeur imprimée, et la valeur imprimée
+# ne sert que de repli quand l'écran est illisible.
+#
+# CE QUE ÇA NE RÈGLE PAS : la carte ABSENTE de card_sets. On espérait que
+# lire sa gemme la rendrait jouable — c'est faux. Le jeu ne nous donne que
+# son cardCode : sans la base, on ignore aussi son TYPE, et
+# `playable_cards` la refuse là-dessus, coût lu ou non. La seule réponse à
+# une base en retard reste `download_card_sets.py`.
+#
+# La position de la gemme n'est pas devinée :
+#
+#     python actions.py cost --calibrate
+#
+# fait encadrer la gemme sur une carte en main, et l'enregistre en
+# fractions du rectangle de la carte — donc valable pour toutes les
+# cartes et toutes les résolutions.
+#
+# COMME POUR LES STATS, CE N'EST PAS FAIT À CHAQUE LECTURE D'ÉTAT.
+# `enrich_with_live_costs()` est appelée juste avant de choisir une carte
+# à poser, et nulle part ailleurs : la boucle de combat interroge l'état
+# en continu, y glisser un OCR par carte de main la rendrait poussive.
+
+COST_CALIBRATION_KEY = "cost_badge"
+
+# Où le coût affiché change quelque chose : la main, puisque c'est de là
+# qu'on joue. Le coût d'une unité déjà posée ne se paie plus.
+LIVE_COST_ZONES = ("hand",)
+
+
+def load_cost_offsets():
+    """Offsets calibrés de la gemme de mana, ou None."""
+    try:
+        import json
+        with open(lor_api.PROJECT_ROOT / "calibration.json", encoding="utf8") as handle:
+            value = json.load(handle).get(COST_CALIBRATION_KEY)
+    except (OSError, ValueError):
+        return None
+    if isinstance(value, (list, tuple)) and len(value) == 4:
+        return tuple(value)
+    return None
+
+
+def read_costs(
+    snapshot: "GameSnapshot",
+    screen: Optional[np.ndarray] = None,
+    zones: tuple = LIVE_COST_ZONES,
+    only_unknown: bool = False,
+    cards: Optional[list] = None,
+) -> int:
+    """
+    Lit le coût en mana affiché sur les cartes, et renseigne `cost_read`.
+
+    `only_unknown=False` par défaut : on lit TOUTES les cartes de la zone,
+    y compris celles que card_sets connaît, parce que c'est justement là
+    que se cachent les réductions et les majorations. Passer True limite la
+    lecture aux cartes absentes de la base — c'est un repli, pas la règle.
+
+    `cards` restreint la lecture à une liste explicite et ignore `zones` :
+    l'appelant sait souvent qu'une carte sera refusée sur son type, et
+    chaque lecture coûte six passes d'OCR.
+
+    Une lecture qui échoue laisse `cost_read` à None, et la carte retombe
+    sur son coût de base : dégradation silencieuse, jamais d'exception.
+
+    Renvoie le nombre de coûts effectivement lus.
+    """
+    offsets = load_cost_offsets()
+    if not offsets:
+        LOGGER.info(
+            "Gemme de mana non calibrée : le bot décide sur les coûts de base. "
+            "Lance `python actions.py cost --calibrate`."
+        )
+        return 0
+
+    try:
+        from mana import read_digits
+    except Exception as exc:
+        LOGGER.warning(
+            "Lecture des coûts indisponible (%s) : on reste sur les coûts de base.", exc
+        )
+        return 0
+
+    def _ocr_cost(crop, name="", debug=False, maximum=COST_MAX):
+        # `ocr_number` (detect_chiffres) exige du rouge ou du vert : c'est
+        # fait pour les badges de stats et rejetterait systématiquement la
+        # gemme de mana, qui est bleue. On passe donc par `read_digits`,
+        # qui vote entre plusieurs binarisations sans test de couleur.
+        return read_digits(crop, maximum)
+
+    if screen is None:
+        screen = lor_api.capture_screen_bgr()
+
+    if cards is None:
+        cards = [card for zone in zones for card in snapshot.zones.get(zone, ())]
+
+    read = 0
+    for card in cards:
+        if only_unknown and card.known:
+            continue
+        try:
+            value = _cached_ocr(
+                _badge_crop(screen, card, offsets),
+                f"{card.code}_cost",
+                _ocr_cost,
+                tag="cost",
+            )
+        except Exception as exc:
+            # `read_digits` n'instancie easyocr qu'au premier appel : un
+            # moteur absent ou un GPU indisponible ne se voit donc PAS à
+            # l'import, mais ici, en plein combat. On retombe sur les
+            # coûts de base plutôt que d'interrompre la partie.
+            LOGGER.warning(
+                "Lecture du coût impossible (%s) : coûts de base conservés.", exc
+            )
+            return read
+        if value is not None:
+            card.cost_read = value
+            read += 1
+    return read
+
+
+def enrich_with_live_costs(
+    snapshot: "GameSnapshot",
+    screen: Optional[np.ndarray] = None,
+    zones: tuple = LIVE_COST_ZONES,
+    cards: Optional[list] = None,
+) -> "GameSnapshot":
+    """
+    Remplit `cost_read` des cartes de la main par OCR de la gemme de mana.
+
+    Pendant symétrique de `enrich_with_live_stats` : même contrat, même
+    dégradation, même règle de priorité (l'écran prime sur card_sets).
+    Modifie l'instantané sur place et le renvoie, pour être remplaçable
+    par un bouchon d'un seul tenant dans les tests.
+    """
+    read_costs(snapshot, screen=screen, zones=zones, only_unknown=False, cards=cards)
+    return snapshot
+
+
+def cost_gaps(snapshot: "GameSnapshot", zones: tuple = LIVE_COST_ZONES) -> list:
+    """
+    Cartes dont le coût affiché diffère du coût imprimé : [(carte, écart)].
+
+    Sert au journal. Un écart, c'est soit un vrai effet de jeu, soit une
+    gemme mal calibrée — dans les deux cas on veut le voir écrit avant de
+    comprendre une décision surprenante.
+    """
+    found = []
+    for zone in zones:
+        for card in snapshot.zones.get(zone, ()):
+            gap = card.cost_gap
+            if gap:
+                found.append((card, gap))
+    return found
+
+
+# Sous-ensembles de zones utiles selon la décision à prendre.
+OUR_UNITS_ZONES = ("board", "attack")
+COMBAT_ZONES = ("board", "attack", "enemy_attack")
 
 
 # ============================================================
@@ -699,12 +1618,27 @@ class GameSnapshot:
     window: Window
     zones: dict = field(default_factory=empty_zones)
     turn_orb_active: Optional[bool] = None
+    # Libellé lu sur le bouton de tour (« resoudre », « cible » = le jeu
+    # attend que NOUS désignions une cible…), None si inconnu.
+    button_label: Optional[str] = None
     attack_token: Optional[bool] = None
     token_match: Optional["TokenMatch"] = None
+    our_nexus: Optional[tuple] = None
+    enemy_nexus: Optional[tuple] = None
+    our_nexus_box: Optional[tuple] = None
+    enemy_nexus_box: Optional[tuple] = None
     api_state: str = ""
     game_id: Optional[int] = None
     last_game_won: Optional[bool] = None
     unknown_codes: tuple = ()
+    # Notre deck de départ ({code: exemplaires}), lu sur /static-decklist
+    # une fois par partie ; {} tant qu'il n'est pas connu.
+    deck: dict = field(default_factory=dict)
+    # Heure de la lecture. Les POSITIONS d'un instantané périment vite : la
+    # main se recentre à chaque pioche, et une lecture vieille d'une
+    # seconde (le temps d'un OCR des coûts) ne sert plus à viser
+    # (cf. actions.fresh_hand_card, 05/09/2026).
+    taken_at: float = field(default_factory=time.time)
 
     # --- accès aux zones ----------------------------------------------
     @property
@@ -728,6 +1662,21 @@ class GameSnapshot:
         return self.zones.get("enemy_attack", ())
 
     @property
+    def stack_ours(self) -> tuple:
+        """Nos cartes sur la pile."""
+        return tuple(c for c in self.stack if c.local)
+
+    @property
+    def stack_theirs(self) -> tuple:
+        """Les cartes ADVERSES sur la pile : il a joué, ou il a répondu."""
+        return tuple(c for c in self.stack if not c.local)
+
+    @property
+    def spells_on_stack(self) -> tuple:
+        """Les cartes de la pile dont on SAIT qu'elles sont des sorts."""
+        return tuple(c for c in self.stack if c.is_spell or c.is_ability)
+
+    @property
     def enemy_board(self) -> tuple:
         return self.zones.get("enemy_board", ())
 
@@ -739,6 +1688,30 @@ class GameSnapshot:
         """Toutes les cartes des zones demandées (toutes zones si aucune)."""
         wanted = zones or ZONE_ORDER
         return tuple(card for name in wanted for card in self.zones.get(name, ()))
+
+    # --- deck ----------------------------------------------------------
+    def is_generated(self, card) -> bool:
+        """
+        Cette carte À NOUS ne vient pas du deck : créée par un effet
+        (Manifest, Invoke, pièce de champion…). Faux si le deck est inconnu —
+        on n'affirme rien sans donnée.
+        """
+        return bool(self.deck) and card.local and card.code not in self.deck
+
+    def deck_remaining(self) -> dict:
+        """
+        Estimation de ce qu'il reste À PIOCHER : le deck de départ moins
+        nos cartes visibles (main, banc, rangée). Les cartes déjà jouées et
+        parties au cimetière ne sont pas visibles, donc pas retranchées :
+        c'est une borne HAUTE, à lire comme telle.
+        """
+        if not self.deck:
+            return {}
+        remaining = dict(self.deck)
+        for card in self.cards("hand", "board", "attack"):
+            if card.local and card.code in remaining:
+                remaining[card.code] = max(0, remaining[card.code] - 1)
+        return {code: n for code, n in remaining.items() if n > 0}
 
     # --- affichage ----------------------------------------------------
     def summary(self) -> str:
@@ -755,13 +1728,18 @@ class GameSnapshot:
             else:
                 token += (
                     f" (score {self.token_match.score:.2f}"
+                    f" x{self.token_match.scale:.2f}"
                     f" cote {self.token_match.side})"
                 )
 
+        button = f" bouton={self.button_label}" if self.button_label else ""
         lines = [
             f"[{self.phase.name}] api={self.api_state or '-'} "
-            f"orbe={flag(self.turn_orb_active)} {token}"
+            f"orbe={flag(self.turn_orb_active)}{button} {token}"
         ]
+        if self.deck:
+            left = sum(self.deck_remaining().values())
+            lines.append(f"  deck : {sum(self.deck.values())} cartes, ≤ {left} à piocher")
         for name in ZONE_ORDER:
             cards = self.zones.get(name, ())
             if cards:
@@ -769,6 +1747,96 @@ class GameSnapshot:
         if self.unknown_codes:
             lines.append(f"    codes absents de card_sets : {', '.join(self.unknown_codes)}")
         return "\n".join(lines)
+
+
+def load_zone_reference():
+    """Référence de géométrie enregistrée, ou None."""
+    try:
+        import json
+        with open(lor_api.PROJECT_ROOT / "calibration.json", encoding="utf8") as handle:
+            value = json.load(handle).get(ZONE_CALIBRATION_KEY)
+    except (OSError, ValueError):
+        return None
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        return tuple(value)
+    return None
+
+
+def snapshot_signature(snapshot: "GameSnapshot") -> tuple:
+    """
+    Empreinte de l'état visible.
+
+    Sert à deux choses : détecter qu'une action a produit un effet, et
+    détecter que la boucle tourne en rond. On y met le CONTENU de chaque
+    zone et pas seulement les tailles — une carte qui change de zone à
+    effectif constant est un vrai progrès.
+    """
+    return (
+        snapshot.phase,
+        tuple(sorted(c.code for c in snapshot.hand)),
+        tuple(sorted(c.code for c in snapshot.board)),
+        tuple(sorted(c.code for c in snapshot.attack_row)),
+        tuple(sorted(c.code for c in snapshot.stack)),
+        tuple(sorted(c.code for c in snapshot.enemy_attack_row)),
+        tuple(sorted(c.code for c in snapshot.enemy_board)),
+    )
+
+
+# ============================================================
+# GÉOMÉTRIE — « les cartes ont-elles fini de bouger ? »
+# ============================================================
+# `snapshot_signature` répond à « le CONTENU des zones a-t-il changé ? ».
+# Ce n'est pas la même question que « où sont les cartes MAINTENANT ? », et
+# confondre les deux est la cause d'un bug tenace : quand une unité est
+# engagée, l'API la fait passer du banc à la rangée d'attaque DÈS LE DÉPÔT,
+# alors que le banc, lui, met le temps d'une animation à se recentrer.
+# Agir sur la première lecture qui « a changé », c'est donc viser des
+# coordonnées en cours de vol — et saisir la voisine, ou le vide.
+
+# Zones dont la position compte avant un geste. Toutes se recentrent : la
+# main et le banc quand une carte les quitte, les rangées de combat quand
+# une unité s'y engage.
+GEOMETRY_ZONES = ("hand", "board", "attack", "enemy_attack", "enemy_board")
+
+# Tolérance en pixels entre deux lectures d'une carte IMMOBILE. Zéro serait
+# trop strict : les rectangles renvoyés par l'API sont arrondis et oscillent
+# d'un pixel sans que rien ne bouge à l'écran.
+GEOMETRY_TOLERANCE = 3
+
+
+def zone_geometry(snapshot: "GameSnapshot", zones: tuple = GEOMETRY_ZONES) -> dict:
+    """
+    Empreinte des POSITIONS : {clé de carte -> boîte} pour `zones`.
+
+    La clé est le CardID quand l'API le donne (stable pour une instance,
+    donc suivre une carte qui glisse est exact). À défaut, on retombe sur
+    (zone, code, rang) : deux exemplaires d'une même carte ne sont alors
+    distingués que par leur rang, ce qui suffit pour savoir si la rangée
+    bouge encore.
+    """
+    geometry = {}
+    for zone in zones:
+        for rank, card in enumerate(snapshot.zones.get(zone, ())):
+            key = (zone, card.card_id) if card.card_id >= 0 else (zone, card.code, rank)
+            geometry[key] = tuple(card.box)
+    return geometry
+
+
+def geometry_is_stable(
+    before: dict, after: dict, tolerance: int = GEOMETRY_TOLERANCE
+) -> bool:
+    """
+    Mêmes cartes, aux mêmes places à `tolerance` pixels près ?
+
+    Un changement d'effectif compte comme un mouvement : une carte qui
+    apparaît ou disparaît annonce une animation qui commence.
+    """
+    if before.keys() != after.keys():
+        return False
+    return all(
+        max(abs(a - b) for a, b in zip(before[key], after[key])) <= tolerance
+        for key in before
+    )
 
 
 # ============================================================
@@ -789,15 +1857,33 @@ class GameStateReader:
         token_template=ATTACK_TOKEN_TEMPLATE,
     ):
         self.card_db = card_db if card_db is not None else lor_api.load_card_db()
+        self.zone_reference = load_zone_reference()
         self.token_threshold = token_threshold
         self.token_template = token_template
         self._warned_template = False
         self._last_game_id: Optional[int] = None
         self._last_game_won: Optional[bool] = None
         self._warned_codes: set = set()
+        # Deck de la partie en cours, relu quand l'API repasse InProgress.
+        self._deck: dict = {}
+        self._deck_state: str = ""
 
     # --- construction des cartes --------------------------------------
-    def _build_cards(self, rectangles: list, window: Window) -> tuple:
+    def bands_for(self, rectangles: list, window: Window) -> tuple:
+        """
+        Bandes de zones adaptées à la géométrie courante.
+
+        Sans référence calibrée, ce sont les bandes d'origine : on ne
+        rééchelonne pas à partir d'un repère qu'on n'a pas mesuré.
+        """
+        if not self.zone_reference:
+            return ZONE_BANDS
+        current = nexus_span(rectangles, window)
+        if current is None:
+            return ZONE_BANDS
+        return rescale_bands(ZONE_BANDS, tuple(self.zone_reference), current)
+
+    def _build_cards(self, rectangles: list, window: Window, bands: tuple = ZONE_BANDS) -> tuple:
         cards, unknown = [], []
 
         for rect in rectangles:
@@ -818,25 +1904,28 @@ class GameStateReader:
                         "sur un plateau incomplet.", code
                     )
 
-            zone = classify_zone(rect, window)
+            zone = classify_zone(rect, window, bands)
             cards.append(
                 BoardCard(
                     card_id=rect.get("CardID", -1),
                     code=code,
                     name=info.get("name") or code,
-                    cost=info.get("cost") or 0,
+                    base_cost=info.get("cost") or 0,
                     base_attack=info.get("attack") or 0,
                     base_health=info.get("health") or 0,
                     type=info.get("type") or "",
                     keywords=tuple(info.get("keywords") or ()),
                     keyword_refs=tuple(info.get("keywordRefs") or ()),
                     description=info.get("descriptionRaw") or "",
+                    spell_speed=info.get("spellSpeedRef") or info.get("spellSpeed") or "",
                     local=bool(rect.get("LocalPlayer")),
                     zone=zone,
                     ratio=zone_ratio(rect, window),
                     box=lor_api.rect_to_screen_box(rect, window),
                     center=lor_api.rect_center_screen(rect, window),
                     known=known,
+                    supertype=info.get("supertype") or "",
+                    collectible=bool(info.get("collectible", True)),
                 )
             )
 
@@ -874,6 +1963,47 @@ class GameStateReader:
             return game_id, True
 
         return game_id, False
+
+    def _deck_for_game(self, api_state: str) -> dict:
+        """
+        Le deck de la partie en cours, lu UNE fois à l'entrée en partie.
+
+        /static-decklist ne coûte rien mais ne change pas pendant la
+        partie : on le relit seulement quand on vient des menus (nouvelle
+        partie), et on garde le dernier connu si l'appel échoue.
+        """
+        if self._deck and self._deck_state == api_state:
+            return self._deck
+        try:
+            data = lor_api.get_static_decklist()
+        except ApiUnavailable:
+            return self._deck
+        cards = (data or {}).get("CardsInDeck") or {}
+        if cards:
+            self._deck = {str(code): int(n) for code, n in cards.items()}
+            self._deck_state = api_state
+            LOGGER.info("Deck lu : %d cartes, %d distinctes.",
+                        sum(self._deck.values()), len(self._deck))
+        return self._deck
+
+    def final_result(self, timeout: float = 8.0, poll: float = 0.5) -> Optional[bool]:
+        """
+        Le verdict de la partie qui vient de finir, ou None.
+
+        `/game-result` ne bascule pas à l'instant où le client repasse aux
+        menus : le journal du 03/09/2026 montrait 47 combats sans un seul
+        `gagne` renseigné, tous sortis sur « retour aux menus ». On lui
+        laisse donc quelques secondes — un GameID qui augmente est la
+        seule preuve qu'une partie s'est conclue, et de qui l'a gagnée.
+        """
+        deadline = time.time() + timeout
+        while True:
+            _, just_finished = self._poll_game_result()
+            if just_finished:
+                return self._last_game_won
+            if time.time() >= deadline:
+                return None
+            time.sleep(poll)
 
     # --- mulligan ------------------------------------------------------
     @staticmethod
@@ -916,13 +2046,28 @@ class GameStateReader:
         api_state = api_data.get("GameState") or ""
         rectangles = api_data.get("Rectangles") or []
 
-        cards, unknown = self._build_cards(rectangles, window)
+        cards, unknown = self._build_cards(rectangles, window, self.bands_for(rectangles, window))
+
+        # La réconciliation par camp n'a de sens qu'en jeu. Pendant le
+        # mulligan, les cartes proposées sont alignées au milieu de
+        # l'écran, donc en plein dans les bandes de combat : les ranger
+        # comme des attaquantes ferait échouer la reconnaissance du
+        # mulligan, qui exige justement un plateau vide.
+        mulligan = self._looks_like_mulligan(cards)
+        if not mulligan:
+            cards = reconcile_combat_rows(cards)
         zones = group_by_zone(cards)
         game_id, just_finished = self._poll_game_result()
+        our_nexus, enemy_nexus = nexus_points(rectangles, window)
+        our_box, enemy_box = nexus_boxes(rectangles, window)
 
         base = dict(
             window=window,
             zones=zones,
+            our_nexus=our_nexus,
+            enemy_nexus=enemy_nexus,
+            our_nexus_box=our_box,
+            enemy_nexus_box=enemy_box,
             api_state=api_state,
             game_id=game_id,
             last_game_won=self._last_game_won,
@@ -935,16 +2080,22 @@ class GameStateReader:
             return GameSnapshot(phase=Phase.GAME_OVER, **base)
 
         if api_state != "InProgress":
+            self._deck_state = api_state
             return GameSnapshot(phase=Phase.MENUS, **base)
+
+        base["deck"] = self._deck_for_game(api_state)
 
         # Le mulligan se reconnaît sans vision : l'orbe peut être grise
         # pendant cet écran, donc le test doit venir AVANT.
-        if self._looks_like_mulligan(cards):
+        if mulligan:
             return GameSnapshot(phase=Phase.MULLIGAN, **base)
 
         screen = lor_api.capture_screen_bgr()
+        lire_les_mots_cles(screen, zones)
         orb_active = turn_orb_is_active(screen, window)
         base["turn_orb_active"] = orb_active
+        button_label, _ = read_turn_button(screen, window)
+        base["button_label"] = button_label
 
         # Le jeton est évalué dans TOUTES les phases de partie, et pas
         # seulement là où il départage ATTACK_TURN et DEFEND_TURN.
@@ -976,16 +2127,80 @@ class GameStateReader:
                 self.token_template,
             )
 
-        if not orb_active:
-            return GameSnapshot(phase=Phase.OPPONENT_TURN, **base)
+        # UNE ATTAQUE DÉCLARÉE SE LIT AVANT L'ORBE, ET C'EST DÉLIBÉRÉ.
+        #
+        # L'orbe répond à « puis-je cliquer maintenant ? », pas à « que se
+        # passe-t-il ? ». Elle est grise pendant toute l'animation de la
+        # charge adverse, et l'ordre inverse faisait donc lire
+        # OPPONENT_TURN — une phase d'attente — au moment précis où il
+        # fallait bloquer. La boucle attendait, l'orbe redevenait bleue,
+        # et il ne restait plus qu'un tour ordinaire à jouer : le bot
+        # annonçait « pas d'attaque ce tour » et passait, attaque encaissée.
+        #
+        # Des unités avancées sont un FAIT, pas une opinion sur le timing.
+        # On les lit d'abord ; c'est `execute_blocks` qui attend ensuite
+        # d'avoir la main pour agir.
+        # UN SORT SUR LA PILE SE LIT AVANT TOUT LE RESTE, ORBE COMPRISE.
+        #
+        # Signalé par Ewan le 03/09/2026 : le bot ne voyait ni les sorts
+        # adverses, ni la réponse adverse à nos sorts, et « jouait comme si
+        # rien ». La pile n'était lue qu'après l'orbe : orbe grise (c'est
+        # à lui de décider) → OPPONENT_TURN, et un sort tombé dans une
+        # autre bande que « stack » passait pour une attaque.
+        #
+        # Une pile qui contient un SORT CONNU est une fenêtre de réponse,
+        # quel que soit l'état des rangées : les compétences « Attaque : »
+        # et les sorts joués pendant le combat s'empilent PENDANT que les
+        # unités sont avancées, et le jeu attend un « OK » avant de
+        # continuer. L'orbe dit alors seulement à qui c'est de parler
+        # (`turn_orb_active`), et c'est la boucle de combat qui en tire
+        # « on répond » ou « on attend ».
+        #
+        # Seuls les sorts CONNUS déclenchent cette lecture : une carte de
+        # type inconnu dans la bande « stack » garde l'ancien traitement,
+        # plus bas — sans base de cartes, tout est inconnu, et lire « sort »
+        # partout empêcherait de bloquer.
+        if any(c.is_spell or c.is_ability for c in zones["stack"]):
+            return GameSnapshot(phase=Phase.SPELL_STACK, **base)
+        # Le bouton dit « RÉSOUDRE » : le jeu attend une réponse, que l'API
+        # ait rapporté le sort ou non. Témoin indépendant de la pile.
+        if button_label == "resoudre" and orb_active:
+            return GameSnapshot(phase=Phase.SPELL_STACK, **base)
 
-        # Notre rangée d'attaque occupée => c'est NOUS qui attaquons,
-        # les cartes adverses en face sont des bloqueurs, pas une attaque.
+        if zones["attack"] and zones["enemy_attack"]:
+            # LES DEUX RANGÉES SONT AVANCÉES : DEUX SITUATIONS OPPOSÉES.
+            #
+            # Soit nous attaquons et ce sont ses bloqueurs qu'on voit en
+            # face. Soit c'est LUI qui attaque, et un Challenger (ou un
+            # Vulnerable) a TIRÉ une de nos unités devant lui : elle
+            # traverse la ligne, la bande « attack » se remplit, et « notre
+            # rangée est occupée » ne veut plus dire « c'est nous qui
+            # attaquons ».
+            #
+            # Observé le 20/08/2026 : l'adversaire attire Mel avec
+            # Challenger, le bot lit ATTACKING, attend une résolution qui
+            # ne vient pas, et le jeu attend nos bloqueurs. Face-à-face
+            # jusqu'à la durée maximale.
+            #
+            # Le jeton tranche, parce que c'est exactement la question
+            # qu'il pose : à qui appartient CE round d'attaque. On ne s'en
+            # sert que quand il est POSITIVEMENT vu du côté adverse — une
+            # détection manquée ne doit pas nous faire croire à une
+            # attaque adverse imaginaire.
+            if match.found and match.ours is False:
+                return GameSnapshot(phase=Phase.BLOCKING, **base)
+            return GameSnapshot(phase=Phase.ATTACKING, **base)
+
         if zones["attack"]:
+            # Notre rangée seule occupée => c'est NOUS qui attaquons, et
+            # il n'a pas encore bloqué.
             return GameSnapshot(phase=Phase.ATTACKING, **base)
 
         if zones["enemy_attack"]:
             return GameSnapshot(phase=Phase.BLOCKING, **base)
+
+        if not orb_active:
+            return GameSnapshot(phase=Phase.OPPONENT_TURN, **base)
 
         if zones["stack"]:
             return GameSnapshot(phase=Phase.SPELL_STACK, **base)
@@ -1034,18 +2249,145 @@ class GameStateReader:
 # CLI — surveillance et calibration
 # ============================================================
 
-def cmd_monitor(interval: float) -> None:
-    """Affiche la phase et le plateau en boucle. Ctrl+C pour arrêter."""
+def cmd_monitor(interval: float, trace_path: Optional[str] = None) -> None:
+    """
+    Affiche la phase et le plateau en boucle. Ctrl+C pour arrêter.
+
+    Avec `--trace fichier.jsonl`, chaque lecture est aussi enregistrée
+    AVEC LE RATIO DE CHAQUE CARTE. C'est ce qu'il faut quand une phase
+    est mal lue : le tableau à l'écran dit « enemy_board », le fichier
+    dit « 0.731 », et on sait alors si la borne est à deux centièmes ou
+    à côté de la plaque. Sans les nombres, on ne peut que deviner.
+    """
+    import json
+
     reader = GameStateReader()
-    print("Surveillance en cours — Ctrl+C pour arrêter.\n")
+    handle = open(trace_path, "a", encoding="utf8") if trace_path else None
+    print("Surveillance en cours — Ctrl+C pour arrêter.")
+    if handle:
+        print(f"Trace enregistrée dans {trace_path}\n")
+    else:
+        print()
+
     last = None
-    while True:
-        snap = reader.snapshot()
-        changed = snap.phase is not last
-        marker = ">>" if changed else "  "
-        print(f"{marker} {time.strftime('%H:%M:%S')} {snap.summary()}")
-        last = snap.phase
-        time.sleep(interval)
+    try:
+        while True:
+            snap = reader.snapshot()
+            changed = snap.phase is not last
+            marker = ">>" if changed else "  "
+            print(f"{marker} {time.strftime('%H:%M:%S')} {snap.summary()}")
+
+            if handle:
+                handle.write(json.dumps({
+                    "t": time.strftime("%H:%M:%S"),
+                    "phase": snap.phase.name,
+                    "orbe": snap.turn_orb_active,
+                    "jeton": snap.attack_token,
+                    "cartes": [
+                        {
+                            "code": c.code, "nom": c.name, "moi": c.local,
+                            "type": c.type, "ratio": round(c.ratio, 4), "zone": c.zone,
+                        }
+                        for c in snap.cards()
+                    ],
+                }, ensure_ascii=False) + "\n")
+                handle.flush()
+
+            last = snap.phase
+            time.sleep(interval)
+    finally:
+        if handle:
+            handle.close()
+
+
+@dataclass
+class LigneInspection:
+    """Une ligne du tableau de `game_state.py inspect`."""
+
+    code: str
+    nom: str
+    local: bool
+    y: int
+    hauteur: int
+    ratio: float
+    bande: str          # ce que la HAUTEUR dit
+    zone: str           # ce que le bot RETIENT vraiment
+    motif: str = ""     # pourquoi les deux diffèrent : "camp" ou "pile"
+
+
+def lignes_inspection(reader: "GameStateReader", rectangles: list, window: Window) -> tuple:
+    """
+    Les lignes du tableau d'`inspect`. Renvoie (lignes, bandes, mulligan).
+
+    Aucune capture d'écran, aucun appel à l'API : tout vient des
+    rectangles passés en argument. C'est ce qui rend la colonne
+    « zone retenue » testable sans le jeu.
+
+    LA COLONNE REJOUE LE CHEMIN DU BOT, ELLE NE LE PARAPHRASE PAS
+    (09/11/2026). Elle refaisait à la main la MOITIÉ de
+    `reconcile_combat_rows` — le camp pour les unités — et oubliait
+    l'autre : un SORT ou une compétence tombé dans une bande de combat
+    va sur la PILE, où que sa hauteur l'ait mis. Mesuré sur un
+    instantané fabriqué (sort adverse au ratio 0,65) : le tableau
+    affichait « enemy_attack » quand l'instantané rangeait « stack »,
+    c'est-à-dire exactement le classement qui déclenche SPELL_STACK.
+    Et l'exception du mulligan manquait aussi : quatre cartes proposées
+    au centre ressortaient « attack <- camp » alors que `snapshot` ne
+    réconcilie rien dans cette phase. On appelle donc `_build_cards`,
+    `_looks_like_mulligan` et `reconcile_combat_rows`, les mêmes que
+    `snapshot`, plutôt que d'en réécrire un résumé qui dérive.
+    """
+    bands = reader.bands_for(rectangles, window)
+    ordonnes = sorted(rectangles, key=lambda r: -r.get("TopLeftY", 0))
+
+    # `_build_cards` garde les rectangles dans l'ordre reçu, et garde
+    # exactement ceux qui portent un code autre que le nexus : la liste
+    # des cartes se réaligne donc sur ces indices-là.
+    gardes = [
+        i for i, rect in enumerate(ordonnes)
+        if rect.get("CardCode") and rect.get("CardCode") != lor_api.NEXUS_CARD_CODE
+    ]
+    cartes, _ = reader._build_cards(ordonnes, window, bands)
+    bandes_lues = [card.zone for card in cartes]
+
+    # La réconciliation n'a pas lieu pendant le mulligan — les cartes
+    # proposées sont au centre, donc dans les bandes de combat.
+    mulligan = reader._looks_like_mulligan(cartes)
+    if not mulligan:
+        reconcile_combat_rows(cartes)
+
+    par_indice = {
+        indice: (card, bande)
+        for indice, card, bande in zip(gardes, cartes, bandes_lues)
+    }
+
+    lignes = []
+    for indice, rect in enumerate(ordonnes):
+        code = rect.get("CardCode", "?")
+        ligne = LigneInspection(
+            code=code, nom="?", local=bool(rect.get("LocalPlayer")),
+            y=rect.get("TopLeftY", 0), hauteur=rect.get("Height", 0),
+            ratio=zone_ratio(rect, window),
+            bande="-", zone="-",
+        )
+        if code == lor_api.NEXUS_CARD_CODE:
+            ligne.nom = "(nexus)"
+        elif indice in par_indice:
+            card, bande = par_indice[indice]
+            ligne.nom = card.name
+            ligne.bande = bande
+            ligne.zone = card.zone
+            if card.zone != bande:
+                # Le motif se DÉDUIT du résultat : on ne rejuge pas la règle.
+                ligne.motif = "pile" if card.zone == "stack" else "camp"
+        else:
+            # Rectangle sans code : le bot l'ignore, le tableau le montre
+            # tel quel plutôt que de lui inventer une zone.
+            ligne.bande = classify_zone(rect, window, bands)
+            ligne.zone = ligne.bande
+        lignes.append(ligne)
+
+    return lignes, bands, mulligan
 
 
 def cmd_inspect() -> None:
@@ -1055,6 +2397,9 @@ def cmd_inspect() -> None:
     lance-le pendant un combat, et vérifie que chaque carte tombe dans
     la bonne colonne. Si une zone est décalée, ajuste la borne
     correspondante dans ZONE_BANDS.
+
+    Le tableau lui-même est bâti par `lignes_inspection`, qui ne lit que
+    les rectangles : ici il n'y a plus que l'appel à l'API et l'impression.
     """
     try:
         api_data = lor_api.get_positional_rectangles()
@@ -1066,33 +2411,40 @@ def cmd_inspect() -> None:
     card_db = lor_api.load_card_db()
     rectangles = api_data.get("Rectangles") or []
 
+    # Les MÊMES bandes que celles utilisées en jeu. Avant, `inspect`
+    # affichait toujours ZONE_BANDS d'origine : dès qu'une calibration
+    # existait, l'outil de diagnostic et le bot ne parlaient pas de la
+    # même chose, et c'est exactement dans ce cas qu'on vient l'ouvrir.
+    reader = GameStateReader(card_db=card_db)
+    lignes, bands, mulligan = lignes_inspection(reader, rectangles, window)
+    rescaled = bands != ZONE_BANDS
+
     print(f"GameState : {api_data.get('GameState')}")
     print(f"Fenêtre   : {window}")
     print(f"Screen API: {api_data.get('Screen')}")
-    print(f"{len(rectangles)} rectangles\n")
+    print(f"{len(rectangles)} rectangles")
+    print(f"Bandes    : {'recalibrées' if rescaled else 'valeurs par défaut'}")
+    if mulligan:
+        print("Mulligan  : reconnu — les bandes sont gardées telles quelles")
+    print()
 
-    header = f"{'code':<10} {'nom':<26} {'moi':<4} {'Y':>6} {'H':>5} {'ratio':>7}  zone"
+    header = (f"{'code':<10} {'nom':<26} {'moi':<4} {'Y':>6} {'H':>5} "
+              f"{'ratio':>7}  {'bande':<13} zone retenue")
     print(header)
     print("-" * len(header))
 
-    for rect in sorted(rectangles, key=lambda r: -r.get("TopLeftY", 0)):
-        code = rect.get("CardCode", "?")
-        if code == lor_api.NEXUS_CARD_CODE:
-            name, zone, ratio = "(nexus)", "-", zone_ratio(rect, window)
-        else:
-            name = (card_db.get(code) or {}).get("name", "?")
-            zone = classify_zone(rect, window)
-            ratio = zone_ratio(rect, window)
+    for ligne in lignes:
+        retenue = ligne.zone + (f"  <- {ligne.motif}" if ligne.motif else "")
         print(
-            f"{code:<10} {name[:26]:<26} "
-            f"{'oui' if rect.get('LocalPlayer') else 'non':<4} "
-            f"{rect.get('TopLeftY', 0):>6} {rect.get('Height', 0):>5} "
-            f"{ratio:>7.3f}  {zone}"
+            f"{ligne.code:<10} {ligne.nom[:26]:<26} "
+            f"{'oui' if ligne.local else 'non':<4} "
+            f"{ligne.y:>6} {ligne.hauteur:>5} "
+            f"{ligne.ratio:>7.3f}  {ligne.bande:<13} {retenue}"
         )
 
-    print("\nBornes actuelles (ratio depuis le bas) :")
+    print("\nBornes en vigueur (ratio depuis le bas) :")
     low = 0.0
-    for upper, name in ZONE_BANDS:
+    for upper, name in bands:
         print(f"    {name:<13} {low:.3f} -> {upper:.3f}")
         low = upper
     print(f"    {FALLBACK_ZONE:<13} {low:.3f} -> 1.000")
@@ -1180,14 +2532,14 @@ def cmd_vision(output_dir: str) -> None:
     else:
         print(
             f"jeton_attaque  score={match.score:.3f} "
-            f"seuil={ATTACK_TOKEN_MATCH_THRESHOLD}  "
+            f"seuil={ATTACK_TOKEN_MATCH_THRESHOLD}  échelle x{match.scale:.2f}  "
             f"-> {'TROUVÉ' if match.found else 'absent'}  côté {match.side}"
         )
         if match.position:
             print(f"               position {match.position}")
 
 
-def _select_box_tk(image: np.ndarray, max_width: int) -> Optional[tuple]:
+def pick_box_tk(image: np.ndarray, max_width: int = 1400, title: str = "Entoure la zone") -> Optional[tuple]:
     """
     Sélecteur de zone en Tkinter.
 
@@ -1220,7 +2572,7 @@ def _select_box_tk(image: np.ndarray, max_width: int) -> Optional[tuple]:
     state = {"start": None, "box": None, "rect": None}
 
     root = tk.Tk()
-    root.title("Entoure l'epee — ENTREE pour valider, ECHAP pour annuler")
+    root.title(title + " — ENTREE pour valider, ECHAP pour annuler")
     photo = ImageTk.PhotoImage(Image.fromarray(rgb))
     canvas = tk.Canvas(root, width=photo.width(), height=photo.height(), highlightthickness=0)
     canvas.pack()
@@ -1271,6 +2623,67 @@ def _select_box_tk(image: np.ndarray, max_width: int) -> Optional[tuple]:
 
     x, y, w, h = state["box"]
     return (int(x / scale), int(y / scale), int(w / scale), int(h / scale))
+
+
+def pick_point_tk(image: np.ndarray, title: str = "Clique le point", max_width: int = 1400):
+    """
+    Demande à l'humain de désigner UN point sur une capture.
+
+    Même raison que `pick_box_tk` d'utiliser Tkinter plutôt qu'OpenCV :
+    easyocr installe `opencv-python-headless`, compilé sans interface
+    graphique, et toute fenêtre cv2 lève alors « The function is not
+    implemented ».
+
+    Sert à calibrer les boutons dont je ne connais pas la position. Un
+    clic humain vaut mieux qu'une constante devinée : c'est juste du
+    premier coup, et ça reste juste si l'interface change.
+
+    Renvoie (x, y) en pixels pleine résolution, ou None si annulé.
+    """
+    try:
+        import tkinter as tk
+        from PIL import Image, ImageTk
+    except ImportError as exc:
+        print(f"Sélection interactive indisponible ({exc}).")
+        return None
+
+    height, width = image.shape[:2]
+    scale = min(1.0, max_width / width)
+    display = (
+        cv2.resize(image, (int(width * scale), int(height * scale)), interpolation=cv2.INTER_AREA)
+        if scale < 1.0 else image
+    )
+    rgb = cv2.cvtColor(display, cv2.COLOR_BGR2RGB)
+
+    state = {"point": None, "marker": None}
+
+    root = tk.Tk()
+    root.title(title + " — ENTREE pour valider, ECHAP pour annuler")
+    photo = ImageTk.PhotoImage(Image.fromarray(rgb))
+    canvas = tk.Canvas(root, width=photo.width(), height=photo.height(), highlightthickness=0)
+    canvas.pack()
+    canvas.create_image(0, 0, anchor="nw", image=photo)
+    label = tk.Label(root, text=title)
+    label.pack(fill="x")
+
+    def on_click(event):
+        if state["marker"] is not None:
+            canvas.delete(state["marker"])
+        state["marker"] = canvas.create_oval(
+            event.x - 9, event.y - 9, event.x + 9, event.y + 9, outline="#00ff00", width=3
+        )
+        state["point"] = (int(event.x / scale), int(event.y / scale))
+        label.config(text=f"Point : {state['point']} — ENTRÉE pour valider")
+
+    canvas.bind("<ButtonPress-1>", on_click)
+    root.bind("<Return>", lambda _: root.quit())
+    root.bind("<KP_Enter>", lambda _: root.quit())
+    root.bind("<Escape>", lambda _: (state.update(point=None), root.quit()))
+    root.protocol("WM_DELETE_WINDOW", lambda: (state.update(point=None), root.quit()))
+    root.mainloop()
+    root.destroy()
+
+    return state["point"]
 
 
 def _tighten_to_icon(crop: np.ndarray, value_floor: int = 90,
@@ -1325,6 +2738,40 @@ def _tighten_to_icon(crop: np.ndarray, value_floor: int = 90,
     return (x1, y1, x2 - x1, y2 - y1)
 
 
+def cmd_cut_button(label: str) -> None:
+    """
+    Enregistre le TEXTE du bouton de tour tel qu'il s'affiche maintenant
+    sous assets/orb/<label>.png. À lancer pendant que le jeu affiche ce
+    libellé (« FIN DU TOUR », « ATTAQUER », « RÉSOUDRE »…). Le texte est
+    isolé par ses pixels blancs dans la zone de l'orbe.
+    """
+    window = lor_api.get_window()
+    screen = lor_api.capture_screen_bgr()
+    crop = lor_api.crop_box(screen, window.rel_box(TURN_ORB_REGION))
+    if crop is None or crop.size == 0:
+        print("Zone de l'orbe hors écran : fenêtre du jeu introuvable ?")
+        return
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    white = (hsv[:, :, 1] < 60) & (hsv[:, :, 2] > 200)
+    h, w = white.shape
+    # On ne garde que la bande centrale : le liseré clair du cadran est
+    # blanc aussi, mais il est au bord.
+    inner = np.zeros_like(white)
+    inner[int(h * 0.25):int(h * 0.75), int(w * 0.3):int(w * 0.95)] = white[int(h * 0.25):int(h * 0.75), int(w * 0.3):int(w * 0.95)]
+    ys, xs = np.nonzero(inner)
+    if len(xs) < 30:
+        print("Aucun texte blanc lisible sur le bouton : est-il bien affiché ?")
+        return
+    y0, y1 = max(0, ys.min() - 3), min(h, ys.max() + 4)
+    x0, x1 = max(0, xs.min() - 4), min(w, xs.max() + 5)
+    TURN_BUTTON_DIR.mkdir(parents=True, exist_ok=True)
+    out = TURN_BUTTON_DIR / f"{label}.png"
+    cv2.imwrite(str(out), crop[y0:y1, x0:x1])
+    print(f"Libellé « {label} » enregistré : {out} ({x1 - x0}x{y1 - y0} px)")
+    read, score = read_turn_button(screen, window)
+    print(f"Relecture immédiate : {read} (score {score:.2f})")
+
+
 def cmd_cut_token(source: str, output_path: str, max_width: int,
                   box: Optional[list] = None, tighten: bool = True) -> None:
     """
@@ -1360,7 +2807,7 @@ def cmd_cut_token(source: str, output_path: str, max_width: int,
         x, y, w, h = (int(v) for v in box)
     else:
         print("Une fenêtre va s'ouvrir : entoure l'épée, puis ENTRÉE (ÉCHAP pour annuler).")
-        selection = _select_box_tk(image, max_width)
+        selection = pick_box_tk(image, max_width, "Entoure l'epee")
         if selection is None:
             print("\nSélection annulée ou impossible.")
             print("Solution de repli, sans affichage :")
@@ -1391,7 +2838,18 @@ def cmd_cut_token(source: str, output_path: str, max_width: int,
 
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(destination), crop)
+    # Le template est écrit AVEC SON MASQUE en canal alpha : seule l'épée
+    # compte dans la correspondance, pas le compteur de mana ni les
+    # rouages derrière elle (cf. load_template_with_mask).
+    mask = icon_mask(crop)
+    coverage = float(mask.mean()) / 255.0
+    if coverage < 0.05:
+        print("Masque trop maigre (l'épée n'est pas reconnue par sa couleur) : "
+              "template écrit SANS masque.")
+        cv2.imwrite(str(destination), crop)
+    else:
+        cv2.imwrite(str(destination), np.dstack([crop, mask]))
+        print(f"Masque : {coverage:.0%} du cadre retenu (l'épée seule, sans le fond).")
 
     # Aperçu agrandi : à 20x20 px le template est illisible à l'œil, et
     # c'est pourtant la seule façon de voir qu'on a attrapé du décor.
@@ -1425,6 +2883,50 @@ def cmd_cut_token(source: str, output_path: str, max_width: int,
     )
 
 
+def cmd_calibrate_zones() -> None:
+    """
+    Enregistre la géométrie actuelle des nexus comme référence.
+
+    À lancer PENDANT UN COMBAT, dans la configuration où `inspect` montre
+    un classement correct. On ne mesure pas « les bonnes bandes » — elles
+    sont déjà connues — mais la géométrie sous laquelle elles sont vraies.
+    Les bandes seront ensuite rééchelonnées sur l'écartement des nexus, ce
+    qui les rend valables à une autre résolution.
+    """
+    try:
+        api_data = lor_api.get_positional_rectangles()
+    except ApiUnavailable as exc:
+        print(f"API injoignable : {exc}")
+        return
+
+    window = lor_api.get_window(api_data)
+    rectangles = api_data.get("Rectangles") or []
+    span = nexus_span(rectangles, window)
+
+    if span is None:
+        print("Les deux nexus ne sont pas visibles : lance ceci pendant un combat.")
+        return
+
+    import json
+    path = lor_api.PROJECT_ROOT / "calibration.json"
+    try:
+        with open(path, encoding="utf8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        data = {}
+    data[ZONE_CALIBRATION_KEY] = list(span)
+    with open(path, "w", encoding="utf8") as handle:
+        json.dump(data, handle, indent=2, ensure_ascii=False)
+
+    print(f"Fenêtre        : {window.width}x{window.height}")
+    print(f"Nexus allié    : {span[0]:.4f} depuis le bas")
+    print(f"Nexus adverse  : {span[1]:.4f} depuis le bas")
+    print(f"Écartement     : {span[1] - span[0]:.4f}")
+    print(f"\nRéférence enregistrée dans {path.name}.")
+    print("Les bandes de zones suivront désormais la géométrie du plateau,")
+    print("y compris si tu changes de résolution.")
+
+
 def cmd_snap(label: str, output_dir: str) -> None:
     """
     Capture l'écran complet sous un nom donné.
@@ -1446,6 +2948,13 @@ def cmd_snap(label: str, output_dir: str) -> None:
 
 
 def main() -> None:
+    # AVANT TOUT CE QUI IMPRIME. `GameSnapshot.summary()` écrit « deck :
+    # N cartes, ≤ M à piocher », et ce « ≤ » n'existe pas en cp1252 :
+    # `python game_state.py monitor > rapport.txt` mourait dessus dès que
+    # `/static-decklist` avait répondu. Mesuré le 10/11/2026, et le
+    # `logging` du projet ne le disait pas — stderr survit toujours, c'est
+    # le `print` qui tombe. Cf. `sortie_utf8.py`.
+    sortie_utf8.appliquer()
     parser = argparse.ArgumentParser(
         description="Lecture de l'état de partie Legends of Runeterra."
     )
@@ -1453,8 +2962,14 @@ def main() -> None:
 
     monitor = sub.add_parser("monitor", help="surveille la phase en direct")
     monitor.add_argument("--interval", type=float, default=1.0)
+    monitor.add_argument("--record", nargs="?", const=True, default=None, metavar="DOSSIER",
+                         help="enregistrer API + captures pour `replay.py` "
+                              "(sans dossier : traces/monitor_<horodatage>/)")
+    monitor.add_argument("--trace", metavar="FICHIER",
+                         help="enregistre chaque lecture, ratios compris, en JSONL")
 
     sub.add_parser("inspect", help="tableau des rectangles et des zones déduites")
+    sub.add_parser("calibrate-zones", help="ancrer les bandes sur la géométrie des nexus")
 
     vision = sub.add_parser("vision", help="exporte les crops de calibration couleur")
     vision.add_argument("--output", default="calibration_crops")
@@ -1462,6 +2977,9 @@ def main() -> None:
     snap = sub.add_parser("snap", help="capture l'écran complet sous un nom")
     snap.add_argument("label", help="nom de la capture, ex. avec / sans")
     snap.add_argument("--output", default="calibration_crops")
+
+    cutb = sub.add_parser("cut-button", help="enregistre le texte du bouton de tour comme libellé")
+    cutb.add_argument("label", help="nom du libellé affiché MAINTENANT, ex. fin_du_tour, attaquer, resoudre")
 
     cut = sub.add_parser("cut-token", help="découpe le template de l'épée à la souris")
     cut.add_argument("--source", default="calibration_crops/ecran_avec.png",
@@ -1480,16 +2998,25 @@ def main() -> None:
 
     if args.command == "inspect":
         cmd_inspect()
+    elif args.command == "calibrate-zones":
+        cmd_calibrate_zones()
     elif args.command == "vision":
         cmd_vision(args.output)
     elif args.command == "snap":
         cmd_snap(args.label, args.output)
+    elif args.command == "cut-button":
+        cmd_cut_button(args.label)
     elif args.command == "cut-token":
         cmd_cut_token(args.source, args.output, args.max_width,
                       box=args.box, tighten=not args.no_tighten)
     else:
         try:
-            cmd_monitor(getattr(args, "interval", 1.0))
+            if getattr(args, "record", None):
+                import replay
+                record = args.record
+                trace_dir = replay.start_recording(None if record is True else record, "monitor")
+                print(f"Trace enregistrée dans {trace_dir}")
+            cmd_monitor(getattr(args, "interval", 1.0), getattr(args, "trace", None))
         except KeyboardInterrupt:
             print("\nArrêt.")
 
