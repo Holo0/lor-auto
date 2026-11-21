@@ -3667,13 +3667,21 @@ Captures appariées à leur trame d'API :
 | arcs cyan concentriques | **effet de zone** (`AuraVisualFakeKeyword`) | PAS un mot-clé |
 | épée orange | Frappe rapide | oui — `QuickStrike` |
 | cercle barré orange | Insaisissable | oui — `Elusive` |
-| tour dorée | Robuste | oui — `Tough` |
+| tour dorée | **Immortalité** | oui, SI c'est `Deathless` — correspondance anglaise À CONFIRMER |
 | face grimaçante orange | Redoutable | oui — `Fearsome` |
 | aile/fourche dorée | Bouclier antisorts | non — `SpellShield`, connu de `riposte.py` seulement |
 | cercle rouge à crochet | Régénération | non — « volontairement non modélisé » |
 | tête cornue dorée | Fureur | non — idem |
 | symbole cyan | Augmentation | non — `Augment` |
 | flamme bleue | Volonté | non — `Spirit` (12 cartes) |
+
+**UNE ÉTIQUETTE CORRIGÉE EN COURS DE ROUTE (21/11).** La tour dorée avait
+d'abord été notée « Robuste » ; Ewan a corrigé : c'est **Immortalité**. Le
+libellé FRANÇAIS fait foi, et la correspondance anglaise reste à trancher —
+`Deathless` est le candidat, mais `Tough`, `Barrier` et `Formidable` sont
+tous modélisés eux aussi, et se tromper reviendrait à faire nommer au bot
+un mot-clé avec aplomb et de travers. **Aucun gabarit ne sera récolté sous
+un nom anglais non confirmé.**
 
 **LA BASE NOMME DÉJÀ LE FAUX MOT-CLÉ.** L'« effet de zone » d'Ewan est
 `AuraVisualFakeKeyword`, porté par **48 cartes**, avec son cousin
