@@ -3593,11 +3593,10 @@ n'a pas regardé », pas « elle n'a rien », même règle que `stunned`. Les
 icônes qui se TOUCHENT ne sont toujours pas séparées (compte à ±1,
 mesuré le 14/11) : ces glyphes-là ne sont jamais identifiés, et c'est
 voulu plutôt que deviné. La MAIN n'a pas cette barre — elle n'existe que
-sur les unités DU PLATEAU. Et **seize des vingt mots-clés modélisés**
-n'ont encore aucun gabarit : quatre seulement (Ephemeral, Hallowed,
-Challenger, Overwhelm) sont récoltés, chacun des seize autres demandant
-une capture étiquetée par Ewan — « de gauche à droite : … » suffit,
-comme pour celle-ci.
+sur les unités DU PLATEAU. (La bibliothèque est passée de QUATRE à
+**vingt-trois** gabarits le 21/11 — voir « Le lexique des icônes » ;
+chaque nouveau mot-clé demande toujours une capture étiquetée par Ewan,
+« de gauche à droite : … » suffit.)
 
 **ON PEUT ENFIN INTERROGER UNE CAPTURE** (20/11, revue finale).
 `champions.py <capture>`, `bilan.py <capture>` et `spells.py explain`
@@ -3615,30 +3614,24 @@ Il imprime, par unité, le nombre d'icônes, la boîte de chacune AVEC SON
 INDEX (c'est lui que `cut-icone` demande) et ce qui est identifié. Une
 capture sans trame appariée n'est pas devinée : on demande un centre.
 
-**CE QUI RESTE OUVERT, ET QU'ON NE FAIT PAS MAINTENANT.** Trois pistes
-sorties de la revue finale ; aucune n'est un correctif, toutes sont des
-changements de CONCEPTION qu'il faudrait mesurer d'abord.
-  - **Compter les icônes NON reconnues.** `identifier()` rend ce qu'il
-    sait nommer et laisse tomber le reste en silence. S'il rendait
-    aussi le nombre de glyphes refusés, on classerait tout seuls les
-    seize gabarits manquants par FRÉQUENCE RÉELLE en partie — la
-    méthode de `journal.py --ecartees`, qui a déjà servi à savoir quelle
-    carte coder en premier. C'est la piste la plus rentable des trois.
-  - **Reconstruire le glyphe depuis la carte des labels** au lieu de
-    trancher le masque partagé. Le masque tranché contient les pixels
-    des VOISINS tombés dans la même boîte : c'est probablement pourquoi
-    le pire vrai positif mesuré (**0.710**, la validation croisée sur
-    Firespitter, collée à une tache de bordure 40×30) est aussi le plus
-    proche du plancher. `connectedComponentsWithStats` rend déjà la
-    carte des labels, elle est jetée.
-  - **Un pré-tri par famille de couleur.** `identifier` compare chaque
-    glyphe à TOUS les gabarits, et la part IoU est linéaire en nombre de
-    mots-clés : mesuré en dupliquant les gabarits, **46,6 ms à 4
-    mots-clés contre 239,7 ms à 20** sur la même scène — **×5,1**, très
-    exactement le facteur annoncé. Le jour où les vingt seront récoltés,
-    ce n'est plus 2 % d'un instantané mais 10 %. Les teintes sont déjà
-    séparées (ORANGE / BLEU / MAGENTA) : un glyphe magenta n'a rien à
-    comparer à un gabarit orange.
+**LES TROIS PISTES DE LA REVUE DU 20/11, ET CE QU'ELLES SONT DEVENUES.**
+  - **Compter les icônes NON reconnues** — TOUJOURS OUVERTE, et toujours
+    la plus rentable. `identifier()` rend ce qu'il sait nommer et laisse
+    tomber le reste en silence. S'il rendait aussi le nombre de glyphes
+    refusés, on classerait tout seuls les gabarits manquants par
+    FRÉQUENCE RÉELLE en partie — la méthode de `journal.py --ecartees`.
+  - **Reconstruire le glyphe depuis la carte des labels** — **FAITE le
+    21/11 au soir**, et elle valait plus cher que prévu : le masque
+    tranché contenait les pixels des VOISINS tombés dans la même boîte,
+    et **11 des 63 crops** étaient dans ce cas, `augment2` à hauteur de
+    **18 %**. Voir `_icones_et_glyphes`.
+  - **Un pré-tri par famille de couleur** — TOUJOURS OUVERTE, et le
+    chiffre est confirmé. `identifier` compare chaque glyphe à TOUS les
+    gabarits, et le coût est linéaire en nombre de gabarits : mesuré sur
+    la MÊME scène, **53,4 ms à 4 familles / 8 gabarits contre 153,9 ms à
+    16 / 23 — ×2,88 pour un rapport de gabarits de ×2,875**. Les teintes
+    sont déjà séparées (`CHAUD` / `BLEU` / `MAGENTA` / `BLANC`) : un
+    glyphe magenta n'a rien à comparer à un gabarit orange.
 
 **PAS ENCORE VU TOURNER EN JEU** : tout est mesuré sur des captures,
 jamais exercé dans une partie. Tests :
@@ -3719,18 +3712,26 @@ sait déjà faire. Les cinq autres (`SpellShield`, `Regeneration`,
 les modéliser reste utile, parce que c'est ce qui permet de compter les
 icônes NON reconnues sans les confondre.
 
-**UNE QUESTION OUVERTE, QUE LA PLANCHE TRANCHERA** : l'épée de Kennen
-(position 2, Frappe rapide) et celle de Viktor n°1 (position 5, Impact)
-se ressemblent beaucoup. Une fois les glyphes découpés proprement, les
-comparer au pixel dira s'il s'agit de DEUX icônes ou d'une seule mal
-étiquetée. On ne récolte pas les deux avant de savoir.
+**LES DEUX ÉPÉES SONT DISTINCTES — question tranchée par la mesure le
+21/11.** L'épée de Kennen (position 2, Frappe rapide) et celle de Viktor
+n°1 (position 5, Impact) se ressemblent à l'œil ; au pixel elles notent
+**0.427** l'une contre l'autre, très loin des 0.85 qui auraient dit
+« une seule icône mal étiquetée », et même sous le plancher
+d'identification (0.60). Et chacune reconnaît la SIENNE : l'épée de
+Kennen sort `quickstrike` à **1.000** et **0.982** sur les deux
+captures (second candidat à 0.48), celle de Viktor sort `impact` à
+**1.000** (second à 0.54). Les deux étiquettes d'Ewan tiennent, et la
+bibliothèque sait les séparer.
 
 **LA BASE NOMME ELLE-MÊME LE FAUX MOT-CLÉ.** L'« effet de zone » est
 `AuraVisualFakeKeyword`, porté par **48 cartes**, avec `LandmarkVisualOnly`
 sur **133** autres : Riot les déclare comme des mots-clés d'AFFICHAGE.
-L'exclusion s'appuiera donc sur la donnée, pas sur une liste devinée —
+L'exclusion s'appuie donc sur la donnée, pas sur une liste devinée —
 même principe que « on compte les marqueurs, on ne reconnaît pas des
-sorts ».
+sorts ». **ELLE EST FAITE** (21/11) : `AFFICHAGE` tient ces deux
+dessins à part de `NOMS`, les deux tables sont CHARGÉES comme classes
+de comparaison (sans quoi un dessin d'affichage irait se faire prendre
+pour un mot-clé) et `identifier` ne rend que ce qui est dans `NOMS`.
 
 **ZÉRO FAUX POSITIF, VÉRIFIÉ SUR CE PLATEAU.** Face aux onze types de
 glyphes ci-dessus, dont AUCUN n'a de gabarit, `identifier` rend `?` à
@@ -3768,9 +3769,142 @@ scènes du 14/11 (≤ 5 icônes alignées) et du 20/11 (4 alignées) ne
 pouvaient pas révéler. Résultat mesuré : **5 boîtes pour 7 icônes, 4
 pour 6, 4 pour 7** — une sur deux est perdue ou fragmentée.
 
-**RIEN DE TOUT ÇA N'EST CORRIGÉ** (21/11). Les captures et le lexique
-sont là ; les gabarits des neuf mots-clés nommés ne sont PAS récoltés,
-parce que segmenter avant de corriger graverait des gabarits faux.
+**LES TROIS SONT CORRIGÉS** (21/11, deux tâches). Ce qui suit est le
+bilan mesuré ; le détail est dans le docstring de `mots_cles_ecran.py`,
+qui porte la fenêtre de chaque borne.
+
+**1. LE CAMP ADVERSE : 0 → 8 → 63 SUR 63.** La barre se lit désormais en
+HAUT de la carte chez l'adversaire (`BARRE_ADVERSE_DY_HAUT/BAS`, bornées
+par BALAYAGE et non par symétrie : le compte est stable de -66 à -41, le
+premier faux positif apparaît à -40). Powder Keg, qui IMPRIME `Immobile`
+et `Vulnerable`, rend ses icônes ; les quatre unités VIERGES du 14/11 —
+trois adverses — restent à **zéro**, et c'est la propriété qui porte
+tout le module.
+
+**2. LE MASQUE VOIT LES SIX FAMILLES D'ICÔNES QU'IL RATAIT.** Ce
+n'était pas la segmentation, c'était la COULEUR : trois familles
+(`ORANGE` 8-28, `BLEU`, `MAGENTA`) construites sur deux captures où
+toutes les icônes étaient de ces teintes. Coût mesuré : **53 boîtes
+dont 1 fausse pour 63 icônes visibles**. Les six manquantes, chacune
+avec sa mesure — cercle ROUGE de Régénération (teintes **2-11**), croix
+BLANCHE d'Immobile et bouclier BLANC de « Can't Block » (saturation
+médiane **17**), tour DORÉE d'Immortalité (S **129** pour un plancher à
+130), flamme de Volonté (**10 px** de large), chevron de NIVEAU
+(**19×11**), et l'œil droit de Redoutable (composante de **15 px**
+d'aire). Quatre familles au lieu de trois (`CHAUD` remplace `ORANGE` en
+élargissant des deux côtés, `BLANC` est neuve), trois bornes recalées
+chacune sur sa fenêtre, un écart de recollage ASYMÉTRIQUE (le jeu range
+ses icônes horizontalement : un trou d'un pixel en HAUTEUR sépare deux
+morceaux d'un même dessin, un trou en LARGEUR sépare deux icônes) et un
+garde du bord latéral. Résultat : **63 icônes sur 63, ZÉRO fausse**, et
+chaque boîte sur la BONNE icône — vérifié par intervalle de position
+contre le lexique d'Ewan, pas par le compte.
+
+**3. LA QUINCONCE EST LUE.** Au-delà de quatre mots-clés le jeu tasse
+les icônes sur DEUX niveaux ; l'agglomération part des plus proches et
+ne dépasse jamais la taille d'un glyphe.
+
+**VINGT-TROIS GABARITS : QUATORZE MOTS-CLÉS ET DEUX DESSINS
+D'AFFICHAGE.** `ephemeral`, `hallowed`, `challenger`, `overwhelm` (Pâle
+orchestre, 20/11) ; `quickstrike`, `elusive`, `spellshield`,
+`regeneration`, `augment` (Kennen) ; `deathless`, `impact`, `spirit`
+(Viktor n°1) ; `fury`, `fearsome` (Viktor n°2) ; plus `niveau` (trois
+variantes, l'indicateur est ANIMÉ) et `aura`. **On ne récolte qu'UNE
+source par forme quand il y en a deux**, pour garder un TÉMOIN : les six
+icônes de Kennen relues sur l'AUTRE capture sortent à 0.805-0.992
+(marges 0.422-0.569), les trois derniers Pâle orchestre à 0.784-0.990,
+et le Challenger IMPRIMÉ de Firespitter (14/11) est reconnu par un
+gabarit du 20/11 à 0.797.
+
+**ET DEUX CONTRÔLES QUE PERSONNE N'AVAIT DEMANDÉS** : les positions 7
+des deux Viktor, qu'Ewan a laissées de côté (« oublie le 7e ») et qui ne
+sont donc PAS récoltées, sortent `Elusive` à **0.715** et `Regeneration`
+à **0.838** — ce sont les mêmes dessins que les positions 3 et 5 de
+Kennen. Deux chemins indépendants, la même réponse.
+
+**LE COÛT SUIT LA TAILLE DE LA BIBLIOTHÈQUE, ET LA LOI D'ÉCHELLE EST
+VÉRIFIÉE.** Même scène, même code, médiane de 9 tours, 7 unités, 23
+glyphes, gabarits en cache : **53,4 ms à 4 familles / 8 gabarits**
+contre **153,9 ms à 16 / 23**, soit **×2,88** pour un rapport de
+gabarits de 23/8 = **×2,875**. Par glyphe : **2,1 ms avant, 6,7 ms
+maintenant** ; rapporté aux ~2200 ms d'un instantané, **2,3 % → 7,0 %**,
+pour un budget annoncé à 50 ms. Le remède est nommé et NON fait : le
+pré-tri par famille de couleur.
+
+**LA PLANCHE, DEMANDÉE PAR EWAN** : `python mots_cles_ecran.py planche`
+écrit `captures_reference/mots_cles/planche_gabarits.png` — 23 vignettes
+grossies ×4, chacune sous son nom de fichier et son mot-clé. Ce n'est
+pas de la décoration : `cut_icone` prend un INDEX pendant que le lexique
+nomme une POSITION, et si les deux se décalent **rien ne rougit** — une
+icône mal nommée se reconnaît parfaitement elle-même. La planche est la
+contre-épreuve qu'on montre à celui qui a étiqueté. **Elle n'a pas
+encore été montrée à Ewan.**
+
+**LA LEÇON DU 21/11 AU SOIR : UNE BOÎTE PEUT ÊTRE AU BON ENDROIT ET NE
+PAS CONTENIR LA BONNE MATIÈRE.** 218 assertions étaient vertes pendant
+que deux gabarits étaient faux, et aucune ne pouvait le voir : le test
+de position juge un CENTRE dans un intervalle de 29 px, et une icône
+amputée de 19 % n'avait déplacé le sien que de 3,5 px.
+  - l'AILE GAUCHE de l'Augmentation de Kennen (6×7, CYAN à la teinte 95)
+    était agglomérée au cercle ROUGE de Régénération (teinte 5), dont la
+    BOÎTE la chevauche en x. `regeneration` ne notait plus que **0.339**
+    contre la même icône vue ailleurs, au lieu de **0.838**. La cause
+    était dans l'AGGLOMÉRATION, pas dans le découpage ;
+  - `identifier` tranchait le MASQUE PARTAGÉ : `augment2` portait **31
+    px de `deathless` sur 177**, et **11 des 63 crops** étaient dans ce
+    cas. La preuve offerte en faveur de ce gabarit (« 0.977 entre les
+    deux Viktor ») était AUTO-CONFIRMANTE — les deux Viktor ont le même
+    voisin au même endroit, donc la même pollution.
+`test_la_matiere_dun_gabarit_est_a_lui` porte désormais les deux
+assertions qui manquaient, et elles rougissent sur les deux défauts.
+
+**UN GABARIT TROP PETIT N'A PAS LE DROIT DE NOMMER**
+(`COTE_MIN_POUR_NOMMER` = 11). `spirit` fait 10×13 : normalisé et
+égalisé en trait, c'est un pâté générique. Il mettait la bibliothèque à
+**0.024** du plancher de score, et DEUX glyphes étrangers franchissaient
+déjà le plancher de MARGE (0.112 et 0.120 contre 0.10) — un seul des
+deux planchers tenait encore. Depuis qu'il concourt sans pouvoir nommer,
+le meilleur étranger retombe à **0.504 (marge 0.075)** : **+0.096 et
++0.025**. Prix exact : **une position nommée sur 44**, la Volonté de
+Viktor n°1, qui reste une icône LUE et COMPTÉE. Aucun seuil n'a été
+desserré.
+
+**CE QUI RESTE OUVERT ICI**, par ordre de ce que ça coûte :
+  - **le PRÉ-TRI PAR FAMILLE DE COULEUR** — 7,0 % d'un instantané pour
+    23 gabarits, et la bibliothèque n'est pas finie ;
+  - **LA BANDE COUPE LES GLYPHES, et la troncature est GRAVÉE dans la
+    bibliothèque.** Mesuré : **17 des 63 boîtes touchent un bord
+    horizontal de la bande** (2 en haut, 15 en bas — **27 %**), et
+    **7 des 23 gabarits en viennent** (`quickstrike`, `spellshield`,
+    `aura`, `deathless`, `fearsome`, `niveau2`, `hallowed2`), plus
+    `augment` qui est tronqué sans toucher le bord. Ce n'est pas une
+    imprécision : `BARRE_DY_BAS` = 82 parce que le liseré bleu du
+    plateau monte jusqu'à +79 et fusionnerait avec les icônes. Mais un
+    glyphe rogné récolté devient un gabarit rogné ;
+  - **`augment` est à revérifier avec Ewan.** Les deux variantes ne se
+    recollent pas — **0.388** l'une contre l'autre, et ça a BAISSÉ après
+    réparation. Regardées à l'image ce sont le MÊME dessin, et l'écart a
+    une cause mesurée : lue jusqu'à dy +86, celle de Kennen ferait
+    22×19 / 189 px au lieu de 22×14 / 142 — **un quart du dessin
+    manque**, ses deux pattes inférieures. La variante par rangée reste
+    donc justifiée tant que la bande s'arrête là, mais c'est à Ewan de
+    confirmer sur la planche que ces deux icônes sont bien la même ;
+  - **compter les icônes NON reconnues**, pour classer les gabarits
+    manquants par fréquence réelle en partie.
+
+**PAS ENCORE VU TOURNER EN JEU** (21/11). Tout — le camp adverse, les
+quatre familles de couleur, les 23 gabarits, l'exclusion des dessins
+d'affichage, le plancher de nommage — est mesuré sur QUATRE captures
+appariées à leur trame d'API. Rien n'a jamais été exercé dans une
+partie. Tests : `test_mots_cles_ecran.py` (301 assertions), dont
+`test_chaque_icone_du_lexique_a_sa_boite`,
+`test_chaque_icone_du_lexique_est_nommee`,
+`test_la_barre_adverse_se_lit_en_haut_de_la_carte`,
+`test_les_familles_blanche_et_rouge_se_voient`,
+`test_un_dessin_daffichage_nest_pas_un_mot_cle`,
+`test_la_matiere_dun_gabarit_est_a_lui`,
+`test_un_gabarit_trop_petit_ne_nomme_pas`,
+`test_la_planche_montre_chaque_gabarit`.
 
 ## Journal des sessions
 
@@ -3926,6 +4060,13 @@ correctif non observé est une hypothèse.
   16/11** : vérifié, zéro Wild Card et zéro blocage de pile dans le log du
   jour, le deck n'en contenait pas.
 - **La lecture des mots-clés ACCORDÉS en jeu** (`mots_cles_ecran.py`,
-  20/11) : mesurée sur deux captures du dépôt, jamais exercée pendant un
-  combat. Reste à voir si `keywords.has()` reçoit vraiment un Challenger
-  ou un Overwhelm accordé pendant une session jouée.
+  20 et 21/11) : mesurée sur QUATRE captures du dépôt, jamais exercée
+  pendant un combat. Reste à voir si `keywords.has()` reçoit vraiment un
+  Challenger ou un Overwhelm accordé pendant une session jouée.
+  **Et tout ce que le 21/11 y a ajouté est dans le même cas** : la barre
+  ADVERSE lue en haut de la carte (le côté où Provocateur, Insaisissable
+  et Redoutable décident d'un blocage), les quatre familles de couleur,
+  les 23 gabarits, l'exclusion des dessins d'affichage et le plancher de
+  nommage. **La planche n'a pas non plus été montrée à Ewan**, et c'est
+  elle qui dirait qu'aucun gabarit n'est mal étiqueté — un fait que
+  AUCUN test ne peut établir.
