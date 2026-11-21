@@ -3869,6 +3869,58 @@ le meilleur étranger retombe à **0.504 (marge 0.075)** : **+0.096 et
 Viktor n°1, qui reste une icône LUE et COMPTÉE. Aucun seuil n'a été
 desserré.
 
+**CE PLANCHER ACHETAIT DE LA DISTANCE, PAS UNE ERREUR CORRIGÉE — ET IL
+N'ÉTAIT GARDÉ PAR RIEN** (re-revue du 21/11). Deux choses mesurées le
+même soir, et il faut les deux :
+  - **aucun des 15 étrangers ne franchit LES DEUX planchers**, même sans
+    le garde : le plancher de SCORE les arrête tous (pire : 0.576 pour
+    0.60). La formule « aucune ne franchit l'un OU l'autre plancher »,
+    écrite dans le module, était fausse — deux franchissent la marge.
+    Le garde rend au module la marge que sa doctrine exige, il ne répare
+    pas un faux positif observé ;
+  - **retirer les deux lignes du garde laissait les 301 assertions
+    VERTES.** Trois raisons empilées : le test dédié RÉ-IMPLÉMENTAIT le
+    classement au lieu d'appeler `familles_lues`, et SAUTAIT les huit
+    étrangers sur quinze dont la tête est `spirit` — exactement les cas
+    qui comptent ; `test_chaque_icone_du_lexique_est_nommee` écrivait
+    `lue == nom OR (muette and lue is None)`, un « ou » entre deux
+    comportements CONTRADICTOIRES, qui acceptait donc aussi que le
+    plancher ne s'applique pas ; et la troisième n'assertait que le
+    COMPTE de glyphes. Le verdict passe désormais par `familles_lues`
+    pour les quinze, et la mutation rougit **3 assertions**.
+
+**ET LA TABLE DU BALAYAGE MESURAIT UNE AUTRE RÈGLE QUE LE CODE.** Elle
+supposait qu'une famille devient muette dès qu'UNE de ses variantes
+passe sous le plancher ; `_peut_nommer` la rend muette quand TOUTES le
+sont — le score d'une famille étant celui de sa MEILLEURE variante,
+comme `digits.load_variants`. D'où des chiffres faux à 13 : **39/44 et
+CINQ positions perdues**, pas 35/44 et neuf, et `niveau` n'y tombe PAS
+(ses variantes font 23×12, 20×24 et 20×27). C'est le défaut de
+`FOND_SOMBRE_MAX`, refait à neuf : **un nombre écrit comme mesuré qui
+ne mesure pas ce que la fonction fait.** 11 reste la bonne valeur — 11
+et 12 rendent le même état, 13 n'améliore AUCUNE des deux distances
+tout en coûtant du rappel.
+
+**⚠⚠ FRAGILITÉ LATENTE : LE PLANCHER EST À UN PIXEL D'UN MOT-CLÉ
+MODÉLISÉ.** Il porte sur le PLUS PETIT CÔTÉ du gabarit, et trois
+familles en sont à un ou deux pixels — `quickstrike` **12**, `aura`
+**12**, `fearsome` **13** — leur petit côté étant la HAUTEUR, c'est-à-
+dire exactement ce que la bande rogne : leurs trois boîtes finissent sur
+sa dernière ligne (`(47, 23, 15, 12)` pour `quickstrike`, y + h = 35 =
+la hauteur de la bande). **Une ligne de plus rognée à la prochaine
+re-récolte le met à 11, deux lignes à 10 — et Frappe rapide devient
+MUETTE sur ses deux positions**, en silence, puisque l'icône continue
+d'être LUE et COMPTÉE. `keywords.strikes_before_blocker` s'en sert pour
+trancher un échange.
+**LE FILET EST UN TEST, ET LE RESTE DE LA SUITE NE POUVAIT PAS LE
+TENIR** : `test_chaque_icone_du_lexique_est_nommee` ACCOMMODE une
+famille muette (il exige `None`), donc il passerait au vert ce jour-là —
+vérifié par mutation, en rognant vraiment deux lignes du PNG. D'où
+`test_un_mot_cle_modelise_ne_devient_pas_muet`, qui compare les familles
+muettes à **`keywords.MODELLED_KEYWORDS`** (la liste n'est pas recopiée
+— une valeur gravée a mordu quatre tests du projet) et rougit aussi
+bien si un gabarit maigrit que si l'on montait le plancher à 13.
+
 **CE QUI RESTE OUVERT ICI**, par ordre de ce que ça coûte :
   - **le PRÉ-TRI PAR FAMILLE DE COULEUR** — 7,0 % d'un instantané pour
     23 gabarits, et la bibliothèque n'est pas finie ;
@@ -3881,14 +3933,33 @@ desserré.
     imprécision : `BARRE_DY_BAS` = 82 parce que le liseré bleu du
     plateau monte jusqu'à +79 et fusionnerait avec les icônes. Mais un
     glyphe rogné récolté devient un gabarit rogné ;
-  - **`augment` est à revérifier avec Ewan.** Les deux variantes ne se
-    recollent pas — **0.388** l'une contre l'autre, et ça a BAISSÉ après
-    réparation. Regardées à l'image ce sont le MÊME dessin, et l'écart a
-    une cause mesurée : lue jusqu'à dy +86, celle de Kennen ferait
-    22×19 / 189 px au lieu de 22×14 / 142 — **un quart du dessin
-    manque**, ses deux pattes inférieures. La variante par rangée reste
-    donc justifiée tant que la bande s'arrête là, mais c'est à Ewan de
-    confirmer sur la planche que ces deux icônes sont bien la même ;
+  - **`augment` : LA TRONCATURE EST PROUVÉE, LE DOUTE N'EST PLUS « MON
+    ŒIL SUR UNE IMAGE »** (mesuré en re-revue le 21/11). Les deux
+    variantes ne se recollent pas — **0.388** l'une contre l'autre, et
+    ça a BAISSÉ après réparation. En faisant simplement VARIER le bord
+    bas de la bande, le score contre `augment2` monte **avec la matière
+    rendue** :
+
+          bande +82   22×14 / 142 px   score contre augment2 = 0.388
+          bande +83   22×16 / 157 px                            0.488
+          bande +84   22×17 / 163 px                            0.576
+          bande +85   22×18 / 184 px                            0.706  (> SCORE_SUR)
+          bande +86   22×19 / 189 px                            0.674
+
+    Rendre le quart manquant fait donc **franchir le plancher
+    d'identification à un couple qui était à 0.388** : l'écart est
+    entièrement dû à la troncature, et **les deux étiquettes d'Ewan
+    tiennent**. (La montée est stricte de +82 à +85, avec un creux à
+    +86 — la direction n'est pas ambiguë, mais ce n'est pas une
+    monotonie parfaite sur tout le balayage : la segmentation rend une
+    boîte légèrement différente à chaque pas.)
+    **ET ON NE DESCEND PAS `BARRE_DY_BAS` POUR AUTANT** : c'est déjà
+    mesuré — à +84, **Sanctification fusionne avec le liseré du
+    plateau** et le Pâle orchestre tombe de 4 icônes à 3 (boîte
+    `57,11,24,24` perdue) ; à +86, deux des cinq vignettes tombent. Le
+    liseré est **BLEU**, pas doré : teinte médiane **H 114** (S 190,
+    V 173) sur les deux lignes gagnées. Réparer la bande est le
+    prochain chantier de ce module, et il passe par là ;
   - **compter les icônes NON reconnues**, pour classer les gabarits
     manquants par fréquence réelle en partie.
 
@@ -3896,7 +3967,7 @@ desserré.
 quatre familles de couleur, les 23 gabarits, l'exclusion des dessins
 d'affichage, le plancher de nommage — est mesuré sur QUATRE captures
 appariées à leur trame d'API. Rien n'a jamais été exercé dans une
-partie. Tests : `test_mots_cles_ecran.py` (301 assertions), dont
+partie. Tests : `test_mots_cles_ecran.py` (328 assertions), dont
 `test_chaque_icone_du_lexique_a_sa_boite`,
 `test_chaque_icone_du_lexique_est_nommee`,
 `test_la_barre_adverse_se_lit_en_haut_de_la_carte`,
@@ -3904,6 +3975,7 @@ partie. Tests : `test_mots_cles_ecran.py` (301 assertions), dont
 `test_un_dessin_daffichage_nest_pas_un_mot_cle`,
 `test_la_matiere_dun_gabarit_est_a_lui`,
 `test_un_gabarit_trop_petit_ne_nomme_pas`,
+`test_un_mot_cle_modelise_ne_devient_pas_muet`,
 `test_la_planche_montre_chaque_gabarit`.
 
 ## Journal des sessions

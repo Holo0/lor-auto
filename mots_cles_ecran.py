@@ -162,6 +162,29 @@ de la bande a été mesurée et verrouillée par une autre tâche.
       et `augment` est tronqué SANS toucher le bord, ses dernières
       lignes tombant sous `FRAGMENT_AIRE_MIN`.
 
+⚠⚠ ET LA TRONCATURE RONGE LE DROIT DE NOMMER. `COTE_MIN_POUR_NOMMER`
+vaut 11 et porte sur le PLUS PETIT CÔTÉ du gabarit. Or trois des
+gabarits rognés sont déjà à un ou deux pixels de ce plancher, et leur
+petit côté est précisément la HAUTEUR que la bande a coupée :
+
+      quickstrike  (47, 23, 15, 12)   petit côté 12   ⚠ MODÉLISÉ
+      aura         (38, 23, 21, 12)   petit côté 12     (affichage)
+      fearsome     (105, 22, 16, 13)  petit côté 13   ⚠ MODÉLISÉ
+
+(y + h = 35 = la hauteur de la bande : les trois boîtes finissent sur
+sa dernière ligne.) UNE LIGNE DE PLUS rognée à la prochaine re-récolte
+met `quickstrike` à 11, DEUX LIGNES à 10 — et il devient MUET sur ses
+deux positions. Frappe rapide est l'un des mots-clés que `keywords.py`
+chiffre : le perdre changerait un calcul de combat, en silence.
+
+AVANT DE RE-RÉCOLTER, LIRE CE QUE LE FILET DIT. Le garde est
+`test_un_mot_cle_modelise_ne_devient_pas_muet`, qui compare les familles
+muettes à `keywords.MODELLED_KEYWORDS` ; il rougit si un gabarit maigrit
+sous le plancher comme si l'on montait le plancher. Le remède de fond,
+lui, est le même que pour les deux `augment` : rendre à la bande le
+quart de glyphe qu'elle coupe — ce qui demande d'abord de régler la
+fusion avec le liseré bleu (voir `BARRE_DY_BAS`).
+
 Ce n'est pas une imprécision de mesure, c'est une conséquence assumée de
 `BARRE_DY_BAS` = 82 : le liseré bleu du plateau monte jusqu'à dy +79 et
 fusionnerait avec les icônes si l'on descendait plus bas (voir le
@@ -216,9 +239,28 @@ dy +86 au lieu de +82, le glyphe de Kennen passe de 22×14 / 142 px à
 22×19 / **189 px** — un quart du dessin manque, et ce sont ses deux
 pattes inférieures. Normaliser un glyphe amputé à 32 px ne redonne pas
 la forme entière. La variante par rangée reste donc justifiée **et le
-restera tant que la bande s'arrêtera là** ; au prochain passage devant
-le jeu, c'est à Ewan de confirmer que ces deux icônes sont bien la même
-(la planche est faite pour ça).
+restera tant que la bande s'arrêtera là**.
+
+ET CE N'EST PLUS « MON ŒIL SUR UNE IMAGE » : EN RENDANT LA MATIÈRE, LE
+SCORE MONTE (mesuré le 21/11 en re-revue, en faisant varier `BARRE_DY_
+BAS` sur l'Augmentation de Kennen, comparée à `augment2`) :
+
+      bande +82   22×14 / 142 px   0.388
+      bande +83   22×16 / 157 px   0.488
+      bande +84   22×17 / 163 px   0.576
+      bande +85   22×18 / 184 px   0.706   > SCORE_SUR
+      bande +86   22×19 / 189 px   0.674
+
+Rendre le quart manquant fait FRANCHIR le plancher d'identification à
+un couple qui était à 0.388 : l'écart est entièrement dû à la
+troncature, et les deux étiquettes d'Ewan tiennent. (Montée stricte de
++82 à +85, creux à +86 : la segmentation rend une boîte légèrement
+différente à chaque pas, la direction n'est pas ambiguë pour autant.)
+ON NE DESCEND PAS LA BANDE POUR AUTANT, et c'est mesuré sur la même
+commande : à +84 Sanctification FUSIONNE avec le liseré du plateau (H
+114, bleu) et le Pâle orchestre tombe de 4 icônes à 3 ; à +86 deux des
+cinq vignettes tombent. Il reste à Ewan de confirmer sur la planche que
+ces deux icônes sont bien la même (la planche est faite pour ça).
 
 MESURE DE L'IDENTIFICATION, bibliothèque complète (21/11/2026 au soir,
 après la réparation des gabarits), sur les 63 glyphes des quatre
@@ -238,7 +280,14 @@ captures. Les classes sont trois, et il faut les distinguer :
 
       les 43 positions RENDUES          score 0.784 à 1.000 | marge 0.378-0.644
       les 15 ÉTRANGÈRES                 **aucune nommée**, et aucune ne
-                                        franchit l'un OU l'autre plancher
+                                        franchit LES DEUX planchers.
+                                        (Deux franchissent celui de
+                                        MARGE — 0.112 et 0.120 — et
+                                        leur tête est `spirit` : c'est
+                                        la marge que `COTE_MIN_POUR_
+                                        NOMMER` rachète. La formule
+                                        « l'un OU l'autre » écrite ici
+                                        jusqu'au 21/11 était fausse.)
       les 2 témoins                     0.942 et 0.797, identifiés
       les 2 « 7e »                      Elusive 0.715 et Regeneration
                                         0.838, identifiées
@@ -1001,6 +1050,20 @@ def cut_icone(capture: str, centre: tuple, index: int, nom: str,
     CHEMIN DE LECTURE, jamais par un seuil choisi à part. Le piège est
     documenté (`cut_defi`, 08/11) — une police découpée autrement ne se
     reconnaît pas elle-même (IoU 0.83, marge sous le plancher).
+
+    ⚠⚠ ET UN GABARIT QUI MAIGRIT PERD LE DROIT DE NOMMER (21/11, en
+    re-revue). `COTE_MIN_POUR_NOMMER` = 11 porte sur le PLUS PETIT CÔTÉ
+    du PNG écrit ici. Trois gabarits sont déjà à un ou deux pixels de ce
+    plancher — `quickstrike` et `aura` à 12, `fearsome` à 13 — et leur
+    petit côté est la HAUTEUR, c'est-à-dire exactement ce que la bande
+    rogne : leurs trois boîtes finissent sur la dernière ligne
+    (y + h = 35). Une ligne de moins et `quickstrike`, un mot-clé que
+    `keywords.py` chiffre, devient MUET sur ses deux positions.
+
+    DONC : APRÈS TOUTE RE-RÉCOLTE, relancer
+    `test_un_mot_cle_modelise_ne_devient_pas_muet` — c'est lui qui
+    rougit, pas la reconnaissance, qui continuerait de marcher en
+    rendant `None`.
     """
     image = cv2.imread(capture)
     if image is None:
@@ -1140,34 +1203,82 @@ MARGE_SURE = 0.10
 # exactement sur le plancher `ICONE_COTE_MIN` : normalisé à 32 px et
 # égalisé en trait, c'est un pâté générique qui ressemble à tout. Mesuré
 # sur les 15 glyphes ÉTRANGERS des quatre captures (ceux dont AUCUN
-# gabarit n'existe), il est le meilleur candidat des trois plus hauts, et
-# il met la bibliothèque à **0.024 du plancher de score** — tandis que le
-# plancher de MARGE, lui, est déjà franchi par deux étrangers (0.112 et
-# 0.120 contre 0.10). Autrement dit : un seul des deux planchers tenait
-# encore, et de peu.
+# gabarit n'existe), il arrive EN TÊTE de huit d'entre eux, et il met la
+# bibliothèque à **0.024 du plancher de score** (0.576 sur Legion
+# Saboteur) tandis que le plancher de MARGE est franchi par deux d'entre
+# eux (0.112 et 0.120 contre 0.10).
+#
+# ⚠ CE QU'IL ACHÈTE EST DE LA DISTANCE, PAS UNE ERREUR CORRIGÉE, et il
+# faut le dire honnêtement : **aucun des 15 étrangers ne franchit LES
+# DEUX planchers aujourd'hui**, même sans ce garde — le plancher de
+# score les arrête tous (le pire est à 0.576 pour 0.60). Les deux qui
+# franchissent la marge sont justement des glyphes dont la tête est
+# `spirit`. Ce plancher-ci ne répare donc pas un faux positif observé :
+# il rend au module la marge de sécurité que la doctrine lui demande
+# (« les DEUX planchers doivent être franchis », et un seul tenait).
 #
 # LA FENÊTRE EST MESURÉE, et le plancher porte sur le PLUS PETIT CÔTÉ du
 # gabarit (ni son aire — `quickstrike` ne pèse que 63 px et reste
 # distinctif — ni son nom) :
 #
-#   côté minimal pour NOMMER   10 | 11  12 | 13          familles muettes
-#   positions nommées / 44     44 | 43  43 | 35          10 : aucune
-#   pire score étranger     0.576 | 0.504   | 0.504      11 et 12 : spirit
-#   pire marge étrangère    0.120 | 0.075   | 0.075      13 : + aura,
-#   distance au score       +0.024| +0.096  | +0.096          niveau,
-#   distance à la marge     -0.020| +0.025  | +0.025          quickstrike
+#   côté minimal pour NOMMER      10 |    11 |    12 |    13 |    14
+#   positions nommées / 44        44 |    43 |    43 |    39 |    38
+#   pire score étranger        0.576 | 0.504 | 0.504 | 0.504 | 0.504
+#   pire marge étrangère       0.120 | 0.075 | 0.075 | 0.075 | 0.075
+#   distance au score         +0.024 |+0.096 |+0.096 |+0.096 |+0.096
+#   distance à la marge       -0.020 |+0.025 |+0.025 |+0.025 |+0.025
+#   familles muettes          aucune | spirit| spirit| + aura| + fearsome
+#                                    |       |       | +quick|
+#                                    |       |       | strike|
 #
-# 11 et 12 donnent le MÊME résultat et ne coûtent que `spirit` ; 13 fait
-# tomber `aura`, `niveau` et `quickstrike` avec, soit NEUF positions
-# nommées au lieu d'une. On prend le plus permissif des deux, comme pour
-# `ICONE_COTE_MAX`.
+# ⚠ CETTE TABLE A ÉTÉ FAUSSE UNE PREMIÈRE FOIS, ET C'EST LA RÈGLE QUI
+# AVAIT ÉTÉ MAL LUE (corrigé le 21/11 en re-revue). Elle annonçait 35/44
+# et neuf positions perdues à 13, avec `niveau` parmi les muettes :
+# c'était supposer qu'une famille devient muette dès qu'UNE de ses
+# variantes passe sous le plancher. `_peut_nommer` dit le contraire —
+# elle est muette quand TOUTES le sont, exactement comme le score d'une
+# famille est celui de sa MEILLEURE variante (`digits.load_variants`).
+# `niveau` a trois variantes, 23×12, 20×24 et 20×27 : elle ne tombe pas à
+# 13. Les vrais chiffres sont ceux du tableau ci-dessus — **39/44 et
+# CINQ positions perdues**. Même défaut que celui qu'on venait de
+# corriger sur `FOND_SOMBRE_MAX` : un nombre écrit comme mesuré qui ne
+# mesure pas ce que la fonction fait.
+#
+# 11 et 12 donnent le MÊME résultat et ne coûtent que `spirit` ; 13
+# n'améliore AUCUNE des deux distances et fait tomber `aura` et
+# `quickstrike` avec, soit CINQ positions nommées au lieu d'une. On
+# prend le plus permissif des deux, comme pour `ICONE_COTE_MAX`.
 #
 # CE QUE ÇA COÛTE, EXACTEMENT : **une position nommée sur 44**, la
 # Volonté de Viktor n°1 — qui redevient un glyphe COMPTÉ mais non nommé,
 # donc `porte_des_mots_cles` la compte toujours (un inconnu compte).
-# `Spirit` n'est pas l'un des six mots-clés modélisés, donc aucun calcul
-# du bot ne change. Et aucun seuil n'a été desserré pour compenser :
-# `SCORE_SUR` et `MARGE_SURE` sont ceux du 20/11.
+# `Spirit` n'est pas l'un des mots-clés que `keywords.py` modélise, donc
+# aucun calcul du bot ne change. Et aucun seuil n'a été desserré pour
+# compenser : `SCORE_SUR` et `MARGE_SURE` sont ceux du 20/11.
+#
+# ⚠⚠ FRAGILITÉ LATENTE — CE PLANCHER EST À DEUX PIXELS D'UN MOT-CLÉ
+# MODÉLISÉ (mesuré le 21/11 en re-revue). Le plus petit côté des
+# gabarits qui NOMMENT encore :
+#
+#       spirit        10   MUETTE
+#       aura          12   (dessin d'affichage)
+#       quickstrike   12   ⚠ MODÉLISÉ (`keywords.strikes_before_blocker`)
+#       fearsome      13   ⚠ MODÉLISÉ (légalité d'un blocage)
+#       elusive       15   puis 15, 16, 16, 18, 18, 19, 20, 20, 22, 24, 24
+#
+# `quickstrike` est découpé dans la boîte (47, 23, 15, 12), dont le bas
+# — y + h = 35 — EST le bas de la bande : c'est un glyphe ROGNÉ (voir
+# « LA BANDE COUPE LES GLYPHES » en tête de module). Une ligne de plus
+# rognée à la prochaine re-récolte le met à 11, deux lignes à 10, et il
+# devient MUET sur ses deux positions — un mot-clé qui change une
+# décision de combat, éteint par un effet de bord de la géométrie de la
+# bande. `aura` (38, 23, 21, 12) et `fearsome` (105, 22, 16, 13) sont
+# dans le même cas, boîte collée au même bord.
+#
+# LE FILET EST UN TEST, PAS UN COMMENTAIRE :
+# `test_mots_cles_ecran.test_un_mot_cle_modelise_ne_devient_pas_muet`
+# compare les familles muettes à `keywords.MODELLED_KEYWORDS` et rougit
+# aussi bien si un gabarit maigrit que si l'on montait ce plancher à 13.
 COTE_MIN_POUR_NOMMER = 11
 
 _GABARITS: dict = {}

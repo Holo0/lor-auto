@@ -16,6 +16,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+import keywords
 import mots_cles_ecran as mce
 
 CAPTURE = Path(__file__).parent / "captures_reference" / "unite_stun_20261114_231607.png"
@@ -862,21 +863,30 @@ def test_chaque_icone_du_lexique_est_nommee():
             if nom.startswith("7e"):
                 continue
             lue = familles[index] if index < len(familles) else "rien"
-            # « CE NOM-LÀ, OU RIEN — JAMAIS UN AUTRE » (21/11/2026 au
-            # soir). Une famille dont tous les gabarits sont sous
-            # `COTE_MIN_POUR_NOMMER` concourt mais ne NOMME pas : son
-            # glyphe est COMPTÉ et rendu `None`. C'est le cas de
-            # `spirit` (10×13), et le silence y est une DÉCISION, pas
+            # DEUX BRANCHES EXCLUSIVES, ET C'EST TOUT LE SUJET
+            # (21/11/2026, re-revue). Une famille dont tous les gabarits
+            # sont sous `COTE_MIN_POUR_NOMMER` concourt mais ne NOMME
+            # pas : son glyphe est COMPTÉ et rendu `None`. C'est le cas
+            # de `spirit` (10×13), et le silence y est une DÉCISION, pas
             # un échec — voir `test_un_gabarit_trop_petit_ne_nomme_pas`.
-            # Graver « position 6 = spirit » ici interdirait la
-            # correction au lieu de garder le comportement : une
-            # lecture FAUSSE reste interdite, une abstention motivée ne
-            # l'est pas. (Même forme que le témoin « 3 ou rien » de
-            # `test_champions`, 14/11.)
+            #
+            # LA PREMIÈRE VERSION ÉCRIVAIT `lue == nom OR (muette and
+            # lue is None)`, c'est-à-dire qu'elle acceptait AUSSI que le
+            # plancher ne s'applique pas : retirer le garde de
+            # `familles_lues` laissait ce test vert. Un « ou » entre
+            # deux comportements contradictoires n'assertait ni l'un ni
+            # l'autre. On exige donc, selon le cas : le nom, OU le
+            # silence — jamais les deux au choix. (Même forme que le
+            # témoin « 3 ou rien » de `test_champions`, 14/11, mais là
+            # le « ou » portait sur UNE seule lecture possible.)
             muette = not mce._peut_nommer(mce.charger_gabarits().get(nom, ()))
-            check(f"{etiquette:<16} : position {index + 1} = {nom}"
-                  + (" (ou rien : famille trop petite pour nommer)" if muette else ""),
-                  lue == nom or (muette and lue is None), lue)
+            if muette:
+                check(f"{etiquette:<16} : position {index + 1} ({nom}) est "
+                      "RENDUE MUETTE — famille trop petite pour nommer",
+                      lue is None, lue)
+            else:
+                check(f"{etiquette:<16} : position {index + 1} = {nom}",
+                      lue == nom, lue)
 
 
 def test_un_dessin_daffichage_nest_pas_un_mot_cle():
@@ -1106,10 +1116,36 @@ def test_un_gabarit_trop_petit_ne_nomme_pas():
     muettes = sorted(f for f, v in gabarits.items() if not mce._peut_nommer(v))
     check("au moins une famille est trop petite pour nommer (sinon ce test ne juge rien)",
           bool(muettes), muettes)
-    for f in muettes:
-        check(f"   « {f} » : tous ses gabarits sont sous le plancher",
-              all(min(v.shape) < mce.COTE_MIN_POUR_NOMMER for v in gabarits[f]),
-              [v.shape for v in gabarits[f]])
+
+    # ⚠ L'ASSERTION QUI ÉTAIT ICI NE POUVAIT PAS ROUGIR (corrigée le
+    # 21/11 en re-revue). Elle vérifiait `all(min(v.shape) <
+    # COTE_MIN_POUR_NOMMER ...)` sur des familles DÉFINIES par
+    # `not _peut_nommer`, c'est-à-dire par `all(min(v.shape) < COTE)` :
+    # elle redisait sa propre définition, et ne pouvait tomber que si
+    # l'on changeait la sémantique de `_peut_nommer` elle-même. C'était
+    # la NEUVIÈME du projet, et elle était dans le test qui venait de
+    # réparer la huitième.
+    #
+    # CE QU'ON EXIGE À LA PLACE EST LA CONSÉQUENCE, SUR LE CHEMIN DE
+    # DÉCISION RÉEL : partout où le lexique d'Ewan nomme une famille
+    # muette, `familles_lues` rend `None`. Retirer les deux lignes
+    # `if sure and not _peut_nommer(...)` de `familles_lues` fait rougir
+    # ici — ce qu'une redéfinition de la définition ne pouvait pas voir.
+    attendues = 0
+    for etiquette, (chemin, centre, lexique) in LEXIQUE.items():
+        image = cv2.imread(str(chemin))
+        if image is None:
+            check(f"capture présente ({etiquette})", False, chemin)
+            continue
+        familles = mce.familles_lues(image, centre)
+        for index, (nom, _, _) in enumerate(lexique):
+            if nom not in muettes or index >= len(familles):
+                continue
+            attendues += 1
+            check(f"   {etiquette} n°{index + 1} ({nom}) : la famille muette "
+                  "NE NOMME PAS", familles[index] is None, familles[index])
+    check("   et le lexique nommait bien au moins une famille muette",
+          attendues >= 1, attendues)
 
     # LES ÉTRANGERS : les unités dont AUCUNE icône n'a de gabarit.
     etrangers = (("Swain", CAPTURE, (724, 900), False),
@@ -1118,25 +1154,51 @@ def test_un_gabarit_trop_petit_ne_nomme_pas():
                  ("Powder Keg (viktor)", CAPTURE_VIKTOR, (959, 180), True),
                  ("Cursed Keeper", CAPTURE_20, (1037, 180), True),
                  ("Vaults of Helia", CAPTURE_20, (880, 180), True))
-    juges = 0
+    #
+    # LE VERDICT PASSE PAR `familles_lues`, POUR TOUS LES QUINZE
+    # (21/11, re-revue). La première version RÉ-IMPLÉMENTAIT le
+    # classement (`notes = sorted(...)`) et SAUTAIT les glyphes dont la
+    # tête est une famille muette — c'est-à-dire **huit sur quinze**,
+    # exactement ceux que le plancher existe pour tenir. « Deux
+    # implémentations du même test finissent toujours par diverger »,
+    # appliqué à la constante neuve de la vague précédente.
+    #
+    # DEUX NIVEAUX D'EXIGENCE, ET ILS NE SE REMPLACENT PAS :
+    #   - AUCUN étranger n'est NOMMÉ, quelle que soit sa tête — c'est la
+    #     DÉCISION, et elle se lit sur `familles_lues` ;
+    #   - et quand sa tête PEUT nommer, il ne franchit NI le score NI la
+    #     marge — c'est la DISTANCE aux planchers, qui ne se lit que sur
+    #     les scores bruts. Les huit à tête `spirit` en sont exclus à
+    #     dessein : deux d'entre eux franchissent la marge (0.112 et
+    #     0.120), et c'est précisément ce que `COTE_MIN_POUR_NOMMER`
+    #     rachète. L'exclusion est désormais COMPTÉE, pas muette.
+    juges, distances = 0, 0
     for etiquette, chemin, centre, adverse in etrangers:
         image = cv2.imread(str(chemin))
         if image is None:
             check(f"capture présente ({etiquette})", False, chemin)
             continue
+        lues = mce.familles_lues(image, centre, adverse=adverse)
         for index in range(len(mce.icones(image, centre, adverse=adverse))):
             glyphe = mce.decouper(image, centre, index, adverse=adverse)
             notes = sorted(((max(mce._score(glyphe, v) for v in variantes), famille)
                             for famille, variantes in gabarits.items()), reverse=True)
             (score, famille), (second, _) = notes[0], notes[1]
             juges += 1
+            check(f"{etiquette:<20}[{index}] n'est PAS nommé (tête : {famille})",
+                  index < len(lues) and lues[index] is None,
+                  lues[index] if index < len(lues) else "hors liste")
             if famille in muettes:
-                continue    # elle ne peut pas nommer : elle ne compte pas ici
+                continue    # sa tête ne peut pas nommer : la distance ne
+                            # dit rien, c'est le garde de taille qui tient
+            distances += 1
             check(f"{etiquette:<20}[{index}] ne franchit NI le score NI la marge "
                   f"(meilleur : {famille})",
                   score < mce.SCORE_SUR and score - second < mce.MARGE_SURE,
                   f"score {score:.3f}, marge {score - second:.3f}")
     check("   et il y avait bien des glyphes étrangers à juger", juges >= 15, juges)
+    check("   dont une part jugée sur la DISTANCE aux planchers",
+          distances >= 7, distances)
 
     # LE COMPTE NE PAIE PAS LE SILENCE : la Volonté de Viktor n°1 est
     # rendue `None` et reste une icône.
@@ -1147,8 +1209,81 @@ def test_un_gabarit_trop_petit_ne_nomme_pas():
     familles = mce.familles_lues(image, (802, 900))
     check("Viktor n1 : 7 glyphes lus, dont celui qu'on ne nomme pas",
           len(familles) == 7, familles)
+    # LE COMPTE SEUL N'ASSERTAIT RIEN DU PLANCHER (corrigé le 21/11 en
+    # re-revue) : les sept boîtes sortent avec ou sans le garde. C'est
+    # la POSITION concernée — la 6e, la Volonté — qui doit être muette.
+    check("   et c'est bien la 6e, la Volonté, qui est rendue None",
+          len(familles) >= 6 and familles[5] is None,
+          familles[5] if len(familles) >= 6 else "hors liste")
     check("   et l'unité porte toujours des mots-clés",
           mce.porte_des_mots_cles(image, (802, 900)) is True)
+
+
+def test_un_mot_cle_modelise_ne_devient_pas_muet():
+    """
+    UN MOT-CLÉ QUE LE BOT SAIT CHIFFRER N'A PAS LE DROIT D'ÊTRE MUET
+    (21/11/2026, en re-revue — fragilité latente, MESURÉE).
+
+    `COTE_MIN_POUR_NOMMER` = 11 porte sur le PLUS PETIT CÔTÉ du gabarit.
+    Trois familles sont à un ou deux pixels de ce plancher, et leur
+    petit côté est la HAUTEUR — c'est-à-dire exactement ce que la bande
+    rogne, leurs trois boîtes finissant sur sa dernière ligne (y + h =
+    35 = `BARRE_DY_BAS` - `BARRE_DY_HAUT`) :
+
+          quickstrike  (47, 23, 15, 12)   petit côté 12   ⚠ MODÉLISÉ
+          aura         (38, 23, 21, 12)   petit côté 12     (affichage)
+          fearsome     (105, 22, 16, 13)  petit côté 13   ⚠ MODÉLISÉ
+
+    UNE LIGNE DE PLUS rognée à la prochaine re-récolte met `quickstrike`
+    à 11 (il nomme encore, pile sur le plancher), DEUX LIGNES à 10 — et
+    il devient MUET sur ses deux positions. Frappe rapide est l'un des
+    mots-clés que `keywords.py` chiffre : `strikes_before_blocker` s'en
+    sert pour décider un échange. Le perdre changerait un calcul de
+    combat **en silence**, puisque le module continuerait de LIRE
+    l'icône et de la COMPTER, en rendant seulement `None`.
+
+    POURQUOI UN TEST ET PAS UN COMMENTAIRE : le reste de la suite
+    accommode une famille muette. `test_chaque_icone_du_lexique_est_
+    nommee` exige `None` quand la famille est muette, donc il passerait
+    au VERT le jour où `quickstrike` tomberait — c'est le bon
+    comportement, et c'est précisément pour ça qu'il ne peut pas servir
+    de filet ici.
+
+    LA LISTE DES MODÉLISÉS N'EST PAS ÉCRITE ICI : elle vient de
+    `keywords.MODELLED_KEYWORDS`, la même table qui sert à départager
+    deux versions d'un pouvoir. Le jour où `keywords.py` apprendra
+    Regeneration ou Spirit, ce test l'exigera tout seul — et c'est un
+    comportement, pas une valeur gravée. (Quatre tests du projet se sont
+    fait mordre par une valeur gravée, dont `RESERVED_FAMILIES` le
+    14/11.)
+
+    IL ROUGIT AUSSI SI L'ON MONTE LE PLANCHER : à 13, `quickstrike`
+    tombe. C'est la décision du 21/11 (« 13 n'améliore aucune distance
+    tout en coûtant du rappel ») rendue exécutable.
+    """
+    print("\nUn mot-clé modélisé ne devient pas muet")
+    gabarits = mce.charger_gabarits()
+    modelises = {k.lower().replace(" ", "") for k in keywords.MODELLED_KEYWORDS}
+
+    surveillees = {f: nom for f, nom in mce.NOMS.items()
+                   if nom.lower().replace(" ", "") in modelises and f in gabarits}
+    check("la bibliothèque porte des mots-clés que `keywords.py` chiffre "
+          "(sinon ce test ne juge rien)", len(surveillees) >= 5, sorted(surveillees))
+
+    for famille, nom in sorted(surveillees.items()):
+        cote = max(min(v.shape) for v in gabarits[famille])
+        check(f"   {nom:<12} ({famille}) : peut NOMMER — plus grand petit "
+              f"côté {cote} pour un plancher de {mce.COTE_MIN_POUR_NOMMER}",
+              mce._peut_nommer(gabarits[famille]),
+              [v.shape for v in gabarits[famille]])
+
+    # ET ON DIT DE COMBIEN IL S'EN FAUT. Pas une assertion sur un
+    # nombre — ce serait graver une valeur — mais la marge imprimée,
+    # pour que celui qui re-récolte voie ce qu'il joue.
+    serres = sorted((max(min(v.shape) for v in gabarits[f]), f)
+                    for f in surveillees)
+    print(f"        marge du plus serré : {serres[0][1]} à "
+          f"{serres[0][0] - mce.COTE_MIN_POUR_NOMMER} px du plancher")
 
 
 def test_la_planche_montre_chaque_gabarit():
@@ -1256,6 +1391,7 @@ def main():
                  test_un_dessin_daffichage_nest_pas_un_mot_cle,
                  test_la_matiere_dun_gabarit_est_a_lui,
                  test_un_gabarit_trop_petit_ne_nomme_pas,
+                 test_un_mot_cle_modelise_ne_devient_pas_muet,
                  test_la_planche_montre_chaque_gabarit):
         test()
     print()
