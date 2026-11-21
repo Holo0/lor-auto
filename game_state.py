@@ -1406,6 +1406,17 @@ def lire_les_mots_cles(screen, zones: dict) -> int:
     bandeau compris) ; l'identification reste à 5,5-9,1 ms par unité
     porteuse. Rapporté aux ~2200 ms d'un instantané : **2,3 %**.
 
+    ⚠ REMESURÉ LE 21/11/2026 AU SOIR, APRÈS LA RÉCOLTE DES SEIZE
+    FAMILLES DE GABARITS : **152,1 ms** sur la même scène de sept
+    unités, contre 53,4 ms avec les quatre familles d'avant — ×2,85,
+    c'est-à-dire exactement le rapport du nombre de gabarits (23 contre
+    8). La comparaison est LINÉAIRE en taille de bibliothèque, et ce
+    module le savait (« 46,6 ms à 4 mots-clés contre 239,7 ms à 20 »).
+    Par glyphe : 2,1 ms avant, 6,6 ms maintenant. Rapporté aux ~2200 ms
+    d'un instantané : **6,9 %**, contre 2,3 %. Le remède nommé dans
+    `mots_cles_ecran` est un PRÉ-TRI PAR FAMILLE DE COULEUR ; il n'est
+    pas fait. `MOTS_CLES_ECRAN = False` reste le repli.
+
     **RESTE marginalement au-dessus du budget de 50 ms fixé pour cette
     tâche, à froid seulement** (à chaud — le régime réel — c'est sous la
     barre). Décision du contrôleur (20/11/2026) : commiter quand même,

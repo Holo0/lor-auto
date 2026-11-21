@@ -303,10 +303,12 @@ def test_un_glyphe_fragmente_se_recolle_entier():
     # n'étaient que le bord d'une tache de bordure voisine ». La capture
     # dit le contraire : la barre de Firespitter porte DEUX icônes
     # orange, et ce ne sont pas les tests qui le prouvent mais les
-    # GABARITS — elles sortent nommées, Surpuissance (0.712, marge
-    # 0.333) et Provocateur (0.710, marge 0.317), aux mêmes niveaux que
-    # la validation croisée du 20/11. Provocateur est son mot-clé
-    # IMPRIMÉ ; Surpuissance lui a été accordée en jeu.
+    # GABARITS — elles sortent nommées, Surpuissance (0.948, marge
+    # 0.475) et Provocateur (0.797, marge 0.383), à six jours de la
+    # capture dont les gabarits sont tirés. Provocateur est son mot-clé
+    # IMPRIMÉ ; Surpuissance lui a été accordée en jeu. (Les deux
+    # notaient 0.712 et 0.710 avant la refonte du masque du 21/11 au
+    # soir : le gain vient de glyphes moins rognés.)
     lues = mce.icones(img14, (880, 900))
     check("Firespitter : ses DEUX glyphes, et pas la tache voisine",
           len(lues) == 2, lues)
@@ -378,11 +380,25 @@ def test_un_glyphe_etranger_nest_identifie_comme_rien():
     """
     LE CAS QUI PROTÈGE DES SEIZE MOTS-CLÉS QU'ON N'A PAS.
 
-    La marge sépare les quatre mots-clés CONNUS entre eux ; seul le score
-    absolu peut refuser un cinquième dont on n'a aucun gabarit. Swain
-    porte Fearsome et quatre autres icônes, dont AUCUNE n'est des nôtres.
-    Mesuré : ses glyphes notent au mieux 0.409 contre nos gabarits, avec
-    des marges de 0.003 à 0.073 — très en dessous de 0.60 / 0.10.
+    La marge sépare les mots-clés CONNUS entre eux ; seul le score absolu
+    peut en refuser un dont on n'a aucun gabarit. Swain porte cinq icônes
+    qu'Ewan n'a jamais étiquetées ; aucune n'est reconnue, et son
+    `Fearsome` imprimé ne note que 0.474 contre le gabarit tiré de Viktor
+    n°2 — ce qui est une LACUNE de rappel, pas un faux positif, et elle
+    est au rapport de la tâche B.
+
+    MESURÉ LE 21/11/2026, bibliothèque à SEIZE familles : ses glyphes
+    notent au mieux **0.575** avec des marges de **0.010 à 0.078** — sous
+    les deux planchers (0.60 / 0.10), et il faut franchir les DEUX.
+
+    ⚠ LA MARGE DE SÉCURITÉ S'EST RESSERRÉE EN GRANDISSANT, et c'est le
+    prix mesuré de la bibliothèque : à quatre familles le meilleur
+    étranger notait 0.472, soit 0.128 sous le plancher ; à seize il note
+    0.575, soit **0.025**. Chaque famille ajoutée est un concurrent de
+    plus pour tous les glyphes inconnus — exactement ce que le projet a
+    mesuré sur la police des chiffres le 14/11 (« enrichir une police
+    resserre ses marges »). C'est le second plancher qui garde le plus de
+    recul ici : 0.078 contre 0.10.
 
     Si ce test rougit, c'est qu'un seuil a été desserré et que le module
     s'est mis à inventer des mots-clés. C'est le pire défaut possible
@@ -406,7 +422,8 @@ def test_un_gabarit_franchit_les_captures():
     gabarits, eux, sont découpés sur celle du 20/11. Le reconnaître prouve
     que les gabarits ne collent pas à leur seule image d'origine.
 
-    Mesuré : 0.710, marge 0.317.
+    Mesuré le 21/11/2026 : **0.797, marge 0.383** (0.710 / 0.317 avant la
+    refonte du masque du même jour).
     """
     print("\nUn gabarit du 20/11 reconnaît une icône du 14/11")
     img = cv2.imread(str(CAPTURE))
@@ -481,36 +498,33 @@ def test_le_decoupage_suit_le_chemin_de_lecture():
 # +78 en bas.
 MILIEU_BANDEAU = 68
 
-# LES DEUX RANGÉES, EN DY RELATIF À `card.center`. Ce sont les plages où
-# tombe le CENTRE d'une boîte qui n'appartient qu'à une rangée (relevé en
-# tête de `mots_cles_ecran`). Elles servent ci-dessous à dire ce qu'une
-# boîte ne doit PAS faire : atteindre les deux.
-RANGEE_HAUTE = (59, 62)
-RANGEE_BASSE = (74, 78)
-
-
 def _centre_vertical(boite, haut_de_bande):
     """dy du centre d'une boîte, ramené au repère de `card.center`."""
     return haut_de_bande + boite[1] + boite[3] / 2
 
 
-def _couvre_les_deux_rangees(boite, haut_de_bande):
+def _icones_couvertes(boite, lexique):
     """
-    L'étendue verticale de cette boîte atteint-elle les DEUX rangées ?
+    Combien d'icônes du lexique cette boîte recouvre-t-elle ?
 
-    C'est ÇA qui rend une boîte inutilisable : elle ne contient alors
-    plus une icône mais deux moitiés d'icônes. Et c'est une propriété de
-    l'ÉTENDUE, pas de la hauteur : une boîte de 26 px de haut peut très
-    bien couvrir les deux rangées (`Viktor gauche`, dy +54..+80) pendant
-    qu'une de 27 px n'en couvre qu'une.
+    UNE BOÎTE QUI EN CONTIENT DEUX EST INUTILISABLE, et c'est ça qu'il
+    faut interdire. La première version de ce test demandait qu'aucune
+    boîte n'ATTEIGNE les deux rangées de la quinconce : cette propriété
+    était un bon détecteur de fusion tant que le masque laissait tomber
+    la moitié des glyphes, mais elle ne l'est plus — mesuré le
+    21/11/2026, les trois boîtes qui atteignent les deux rangées sont
+    maintenant des icônes UNIQUES et simplement hautes (le cercle rouge
+    de Régénération, 24×26, dy +52..+78, sur les deux captures de
+    Kennen ; le disque de niveau de Viktor n°2, 20×27, dy +50..+77).
+    Exiger le contraire ferait rougir un correctif.
+
+    On compte donc les CENTRES du lexique que l'étendue en x de la boîte
+    enferme. La fusion que ce test existe pour attraper — la flamme de
+    Volonté soudée à l'œil barré de Viktor n°1, x 108..140 — en enferme
+    DEUX ; les trois boîtes hautes ci-dessus n'en enferment qu'UN.
     """
-    y0 = haut_de_bande + boite[1]
-    y1 = y0 + boite[3]
-
-    def atteint(rangee):
-        return y0 <= rangee[1] and y1 >= rangee[0]
-
-    return atteint(RANGEE_HAUTE) and atteint(RANGEE_BASSE)
+    return sum(1 for _, x0, x1 in lexique
+               if boite[0] <= (x0 + x1) / 2 <= boite[0] + boite[2])
 
 
 def test_la_barre_adverse_se_lit_en_haut_de_la_carte():
@@ -587,60 +601,31 @@ def test_les_deux_rangees_dune_barre_tassee_ne_se_confondent_pas():
     NIVEAUX (21/11/2026). Le recollage par colonne du 20/11 chaînait les
     fragments par leurs seules plages en x : sur deux niveaux il mariait
     une icône du haut à sa voisine du bas, la boîte dépassait la taille
-    d'un glyphe, et le repli rejugeait chaque fragment seul — une icône
-    sur deux perdue ou fragmentée.
+    d'un glyphe, et le repli rejugeait chaque fragment seul.
 
-    Comptes étiquetés par Ewan : Kennen (05BC058) SIX icônes, Viktor
-    (03PZ003) SEPT. Ce qu'on exige ici :
+    Ce qu'on exige ici :
       - la QUINCONCE est vue : au moins une boîte de chaque côté du
-        milieu du bandeau ;
-      - le nombre de boîtes qui ATTEIGNENT LES DEUX RANGÉES ne dépasse
-        pas le relevé ci-dessous — c'est un PLAFOND DE DÉFAUTS CONNUS,
-        pas une propriété satisfaite (voir le bloc qui suit) ;
-      - le compte ne dépasse JAMAIS le nombre d'icônes étiquetées — un
-        faux positif serait pire qu'une icône manquée.
+        milieu du bandeau, sur les quatre barres tassées ;
+      - AUCUNE boîte ne contient DEUX icônes du lexique d'Ewan.
 
-    ⚠ CE QU'ON VOUDRAIT ÉCRIRE — « AUCUNE boîte ne couvre les deux
-    rangées » — EST FAUX AUJOURD'HUI, ET ÇA SE MESURE (21/11/2026). La
-    première version de ce test affirmait cette propriété en relisant
-    `b[3] <= mce.ICONE_COTE_MAX` : or `_est_un_glyphe` impose DÉJÀ cette
-    borne à toute boîte que `icones()` rend, dans les deux branches de
-    `_icones_et_masque`. **Aucune sortie possible du module ne pouvait
-    la faire rougir** — le sixième exemplaire du motif que CLAUDE.md
-    recense cinq fois (`test_restrictions_levees`, `test_recovered_
-    screen_resets_the_counter`, `RESERVED_FAMILIES`, le Joker…).
-    Le chiffre qui la défendait était faux lui aussi : les hauteurs
-    mesurées sur ces quatre cartes vont de **12 à 31 px**, et le 31 est
-    justement la boîte qui enjambe les deux rangées.
+    LA SECONDE ASSERTION A CHANGÉ DE FORME LE 21/11/2026, et la raison
+    est mesurée. Elle disait d'abord « au plus N boîtes atteignent les
+    deux rangées », N étant un registre de défauts connus (0, 1, 1, 2).
+    Une fois le masque refait, les SEULES boîtes qui atteignent encore
+    les deux rangées sont des icônes UNIQUES et simplement hautes : le
+    cercle rouge de Régénération (24×26, dy +52..+78) sur les deux
+    captures de Kennen, et le disque de niveau de Viktor n°2 (20×27, dy
+    +50..+77). Garder l'ancienne forme aurait fait rougir le correctif
+    au lieu du défaut.
 
-    LES QUATRE ENJAMBEMENTS MESURÉS, un par un (dy relatif au centre) :
-      - Kennen (kennen) : AUCUN — c'est une vraie propriété, et le
-        plafond y est donc ZÉRO ;
-      - Kennen (viktor) : 1, et ce n'est pas une fusion — c'est le HALO
-        bleu du plateau (15×20 à dx +65, dy +62..+82), hors du bandeau
-        (demi-largeur 71 px) mais dans `BARRE_DEMI_LARGEUR` = 80. C'est
-        le faux positif déjà décrit en tête de `mots_cles_ecran` ; il
-        partira avec lui ;
-      - Viktor gauche : 1 — dx +28..+60, dy +54..+80, 32×26, faite de
-        TROIS fragments dont deux de la rangée du haut (centres +61,
-        +63) et un de celle du bas (+73,5) : une vraie fusion ;
-      - Viktor droite : 2 — dx +7..+41, dy +51..+82, 34×31, trois
-        fragments (+60,5 en haut ; +72,5 et +79 en bas), une vraie
-        fusion ; et dx -57..-37, dy +50..+77, 20×27, qui est au
-        contraire UNE SEULE composante connexe, donc un défaut de
-        MASQUE et non d'agglomération (la même icône fait 20×20 sur
-        Viktor gauche).
-    Deux des quatre relèvent donc du masque de couleur (tâche B), un de
-    l'agglomération, un du halo. Le plafond est écrit par carte pour
-    qu'une régression sur UNE carte rougisse, et il est à `<=` pour
-    qu'un correctif ne rougisse pas.
+    CE QUE LA FORME ACTUELLE ATTRAPE ENCORE, et c'est le vrai sujet :
+    une boîte qui enferme DEUX icônes. La fusion que ce test existe pour
+    interdire est la flamme de Volonté soudée à l'œil barré de Viktor
+    n°1 (x 108..140, 32×26) : elle enferme les centres des DEUX. Les
+    trois boîtes hautes ci-dessus n'en enferment qu'un.
     """
     print("\nLes deux rangées d'une barre tassée")
-    for etiquette, chemin, centre, etiquetees, enjambements in (
-            ("Kennen (kennen)", CAPTURE_KENNEN, (959, 900), 6, 0),
-            ("Kennen (viktor)", CAPTURE_VIKTOR, (1115, 900), 6, 1),
-            ("Viktor gauche", CAPTURE_VIKTOR, (802, 900), 7, 1),
-            ("Viktor droite", CAPTURE_VIKTOR, (959, 900), 7, 2)):
+    for etiquette, (chemin, centre, lexique) in LEXIQUE.items():
         img = cv2.imread(str(chemin))
         if img is None:
             check(f"capture présente ({etiquette})", False, chemin)
@@ -650,26 +635,18 @@ def test_les_deux_rangees_dune_barre_tassee_ne_se_confondent_pas():
                  if _centre_vertical(b, mce.BARRE_DY_HAUT) <= MILIEU_BANDEAU]
         bas = [b for b in lues
                if _centre_vertical(b, mce.BARRE_DY_HAUT) > MILIEU_BANDEAU]
-        a_cheval = [b for b in lues
-                    if _couvre_les_deux_rangees(b, mce.BARRE_DY_HAUT)]
         check(f"{etiquette:<16} : la rangée du HAUT est vue", len(hauts) >= 1,
               [b[:4] for b in lues])
         check(f"{etiquette:<16} :    et celle du BAS aussi", len(bas) >= 1,
               [b[:4] for b in lues])
-        check(f"{etiquette:<16} : au plus {enjambements} boîte(s) à cheval "
-              f"sur les deux rangées",
-              len(a_cheval) <= enjambements,
-              [(b[0], mce.BARRE_DY_HAUT + b[1],
-                mce.BARRE_DY_HAUT + b[1] + b[3]) for b in a_cheval])
-        check(f"{etiquette:<16} : jamais plus que les {etiquetees} étiquetées",
-              len(lues) <= etiquetees, len(lues))
-        check(f"{etiquette:<16} : au moins quatre des {etiquetees}",
-              len(lues) >= 4, len(lues))
+        doubles = [b for b in lues if _icones_couvertes(b, lexique) > 1]
+        check(f"{etiquette:<16} : aucune boîte n'enferme deux icônes",
+              not doubles, [b[:4] for b in doubles])
 
     # LA RANGÉE DU BAS N'EST PLUS À MOITIÉ PERDUE, et c'est le cœur du
-    # correctif. Kennen porte TROIS icônes en bas (épée, aile dorée,
-    # symbole cyan) : le recollage par colonne n'en rendait que DEUX,
-    # l'aile ayant été mariée à sa voisine du haut.
+    # correctif du 21/11. Kennen porte TROIS icônes en bas (épée, aile
+    # dorée, symbole cyan) : le recollage par colonne n'en rendait que
+    # DEUX, l'aile ayant été mariée à sa voisine du haut.
     img = cv2.imread(str(CAPTURE_KENNEN))
     if img is not None:
         bas = [b for b in mce.icones(img, (959, 900))
@@ -704,6 +681,300 @@ def test_une_tache_hors_du_bandeau_nest_pas_une_icone():
           mce.icones(img, (724, 900)))
 
 
+# ============================================================
+# LE LEXIQUE D'EWAN - la verite terrain, PAR POSITION
+# ============================================================
+# « La vérité terrain est une POSITION, pas une description » (CLAUDE.md).
+# Chaque ligne donne, de gauche à droite, le nom donné par Ewan et
+# l'INTERVALLE en x (coordonnées de bande) où tombe le centre du glyphe,
+# relevé sur la capture agrandie ×7. Un intervalle, pas un x : ce qu'on
+# exige est « une boîte EST SUR ce glyphe-là », pas « la boîte commence à
+# tel pixel » — l'origine exacte d'une boîte est un incident de
+# segmentation, et graver une valeur au lieu d'un comportement est le
+# motif qui a mordu le projet sept fois.
+#
+# Les positions 7 des deux Viktor ne sont pas nommées (Ewan : « oublie le
+# 7e ») mais elles EXISTENT : elles sont donc comptées, et seulement
+# comptées — aucun gabarit n'en est tiré.
+LEXIQUE = {
+    "Kennen (kennen)": (CAPTURE_KENNEN, (959, 900), [
+        ("niveau", 19, 46), ("quickstrike", 44, 63), ("elusive", 59, 86),
+        ("spellshield", 80, 101), ("regeneration", 97, 123), ("augment", 117, 146)]),
+    "Kennen (viktor)": (CAPTURE_VIKTOR, (1115, 900), [
+        ("niveau", 20, 47), ("quickstrike", 45, 64), ("elusive", 60, 87),
+        ("spellshield", 81, 102), ("regeneration", 98, 124), ("augment", 118, 147)]),
+    "Viktor n1": (CAPTURE_VIKTOR, (802, 900), [
+        ("niveau", 22, 45), ("aura", 38, 60), ("augment", 53, 78),
+        ("deathless", 71, 93), ("impact", 87, 107), ("spirit", 106, 120),
+        ("7e non nommee", 118, 145)]),
+    "Viktor n2": (CAPTURE_VIKTOR, (959, 900), [
+        ("niveau", 22, 45), ("aura", 38, 60), ("augment", 53, 78),
+        ("deathless", 71, 93), ("fury", 86, 108), ("fearsome", 104, 122),
+        ("7e non nommee", 119, 143)]),
+}
+
+
+def _appariement(boites, lexique):
+    """Le nom du lexique porté par chaque boîte, ou None.
+
+    Apparie dans l'ORDRE du lexique : la première boîte libre dont le
+    centre tombe dans l'intervalle. Rend (noms_vus, boîtes_sans_nom)."""
+    pris = [None] * len(boites)
+    vus = []
+    for nom, x0, x1 in lexique:
+        for j, b in enumerate(boites):
+            if pris[j] is None and x0 <= b[0] + b[2] / 2 <= x1:
+                pris[j] = nom
+                vus.append(nom)
+                break
+    return vus, [boites[j] for j in range(len(boites)) if pris[j] is None]
+
+
+def test_chaque_icone_du_lexique_a_sa_boite():
+    """
+    LE COMPTE EST JUSTE, ET IL EST JUSTE AU BON ENDROIT (21/11/2026).
+
+    C'est la propriété qui rend la RÉCOLTE possible : `cut_icone` prend un
+    INDEX, le lexique nomme une POSITION, et les deux ne coïncident que si
+    chaque icône étiquetée a UNE boîte et qu'aucune boîte n'est en trop.
+    Avant ce correctif l'index 0 de Kennen désignait le chevron de niveau
+    sur une capture et l'épée sur l'autre, et la seconde liste se
+    terminait par un halo du plateau — récolter à l'index y aurait gravé
+    un gabarit FAUX, sans que rien rougisse (`cut_defi`, 08/11).
+
+    Les familles d'icônes que le masque de couleur ne voyait pas sont dans
+    ce tableau : le cercle rouge de Régénération (teintes 2 à 11), la tour
+    dorée d'Immortalité (saturation médiane 129), la flamme de Volonté
+    (10 px de large), le chevron de niveau (19×11 sur la capture
+    `victor`), et le ruban de Redoutable, dont l'œil droit ne fait que
+    15 px d'aire.
+    """
+    print("\nChaque icône du lexique d'Ewan a sa boîte, et rien de plus")
+    for etiquette, (chemin, centre, lexique) in LEXIQUE.items():
+        img = cv2.imread(str(chemin))
+        if img is None:
+            check(f"capture présente ({etiquette})", False, chemin)
+            continue
+        boites = mce.icones(img, centre)
+        vus, orphelines = _appariement(boites, lexique)
+        manquants = [n for n, _, _ in lexique if n not in vus]
+        check(f"{etiquette:<16} : les {len(lexique)} icônes étiquetées sont vues",
+              not manquants, f"manque {manquants} - boîtes {[b[:4] for b in boites]}")
+        check(f"{etiquette:<16} :    et aucune boîte en trop",
+              not orphelines, [b[:4] for b in orphelines])
+
+
+def test_les_familles_blanche_et_rouge_se_voient():
+    """
+    LES FAMILLES DE COULEUR AJOUTÉES, chacune sur son témoin ADVERSE.
+
+    Le miroir du test précédent, côté adverse — où la barre est en haut de
+    la carte — et avec des ORACLES EXTERNES : 02BW032T1 « Powder Keg »
+    imprime `Immobile` (croix BLANCHE) et `Vulnerable` ; 01SI048 « Cursed
+    Keeper » imprime `Can't Block` (bouclier BLANC) et `Last Breath`. Ces
+    deux icônes-là ne sont dans aucune des trois familles d'avant
+    (saturation médiane 17) : le compte passait de 3 à 2 et de 2 à 1.
+    """
+    print("\nLa famille blanche, sur les deux cartes qui l'impriment")
+    for etiquette, chemin, centre, attendu in (
+            ("Powder Keg (kennen)", CAPTURE_KENNEN, (880, 180), 3),
+            ("Powder Keg (viktor)", CAPTURE_VIKTOR, (959, 180), 3),
+            ("Cursed Keeper", CAPTURE_20, (1037, 180), 2)):
+        img = cv2.imread(str(chemin))
+        if img is None:
+            check(f"capture présente ({etiquette})", False, chemin)
+            continue
+        lues = mce.icones(img, centre, adverse=True)
+        check(f"{etiquette:<20} : ses {attendu} icônes, la blanche comprise",
+              len(lues) == attendu, [b[:4] for b in lues])
+
+
+def test_une_boite_qui_touche_le_bord_de_la_bande_nest_pas_une_icone():
+    """
+    LA BANDE EST PLUS LARGE QUE LE BANDEAU, ET C'EST MESURÉ.
+
+    On lit `BARRE_DEMI_LARGEUR` = 80 px de part et d'autre du centre
+    quand le bandeau noir, lui, ne fait que 65 (Pâle orchestre) à 71 px
+    (Kennen, Viktor) de demi-largeur. Les 9 px de marge laissent entrer le
+    HALO BLEU du plateau : sous Kennen (capture `victor`) il formait une
+    boîte de 15×20 à dx +65, de taille parfaitement plausible et cernée de
+    noir — donc invisible au garde du bandeau.
+
+    Rien de réel ne touche ce bord : sur les 63 icônes des quatre
+    captures, la boîte la plus à gauche commence à x = 16 et la plus à
+    droite finit à x = 140, pour une bande large de 160.
+    """
+    print("\nUne boîte collée au bord latéral de la bande")
+    vus = 0
+    for chemin, centres, adverse in (
+            (CAPTURE_VIKTOR, [(802, 900), (959, 900), (1115, 900)], False),
+            (CAPTURE_KENNEN, [(959, 900)], False),
+            (CAPTURE_20, CENTRES_ORCHESTRE, False),
+            (CAPTURE, [(724, 900), (880, 900), (1037, 900)], False)):
+        img = cv2.imread(str(chemin))
+        if img is None:
+            check(f"capture présente ({chemin.name})", False, chemin)
+            continue
+        largeur = 2 * mce.BARRE_DEMI_LARGEUR
+        for centre in centres:
+            for b in mce.icones(img, centre, adverse=adverse):
+                vus += 1
+                check(f"{chemin.name[:12]} {centre} : boîte x={b[0]} "
+                      f"{b[2]}x{b[3]}, pas collée au bord",
+                      b[0] > 0 and b[0] + b[2] < largeur, b[:4])
+    check("   et il y avait bien des boîtes à juger", vus >= 30, vus)
+
+
+def test_chaque_icone_du_lexique_est_nommee():
+    """
+    LA BIBLIOTHÈQUE REND À CHAQUE POSITION LE NOM D'EWAN (21/11/2026).
+
+    C'est le test que la récolte existe pour rendre possible, et c'est
+    aussi sa contre-épreuve : `cut_icone` prend un INDEX, le lexique
+    nomme une POSITION, et un décalage entre les deux graverait un
+    gabarit sous le nom du voisin — sans que rien rougisse, puisqu'une
+    icône mal nommée se reconnaît parfaitement elle-même. Ici on relit
+    les DEUX captures, dont celle qui n'a PAS servi de source.
+
+    LES TÉMOINS INDÉPENDANTS, mesurés (score | marge) :
+      - Kennen, capture `victor` : aucun de ses six gabarits n'en vient,
+        ils sont tous découpés sur la capture `kennen` — 0.805 à 1.000,
+        marges 0.428 à 0.584 ;
+      - Viktor n°2 : `aura` et `deathless` viennent de Viktor n°1 —
+        0.962 et 0.925 ;
+      - les trois derniers Pâle orchestre : les gabarits viennent des
+        deux premiers — 0.784 à 0.990.
+
+    La position 7 des deux Viktor n'est pas dans le lexique (Ewan :
+    « oublie le 7e ») : on ne dit rien de ce qu'elle devient.
+    """
+    print("\nChaque icône du lexique est NOMMÉE")
+    for etiquette, (chemin, centre, lexique) in LEXIQUE.items():
+        img = cv2.imread(str(chemin))
+        if img is None:
+            check(f"capture présente ({etiquette})", False, chemin)
+            continue
+        familles = mce.familles_lues(img, centre)
+        check(f"{etiquette:<16} : une famille par boîte",
+              len(familles) == len(mce.icones(img, centre)), familles)
+        for index, (nom, _, _) in enumerate(lexique):
+            if nom.startswith("7e"):
+                continue
+            check(f"{etiquette:<16} : position {index + 1} = {nom}",
+                  index < len(familles) and familles[index] == nom,
+                  familles[index] if index < len(familles) else "rien")
+
+
+def test_un_dessin_daffichage_nest_pas_un_mot_cle():
+    """
+    L'INDICATEUR DE NIVEAU ET L'EFFET DE ZONE SONT RECONNUS, PUIS
+    ÉCARTÉS (21/11/2026).
+
+    La première place de la barre est le niveau du champion (fait de jeu
+    d'Ewan) et la deuxième place des Viktor est un « effet de zone » que
+    la base nomme elle-même `AuraVisualFakeKeyword`. Les COMPTER faisait
+    de `a_recu_un_mot_cle` un faux positif pour tout champion monté de
+    niveau sans mot-clé imprimé — la seule promesse que cette fonction
+    porte.
+
+    Trois choses, et il faut les trois : le dessin est bien reconnu
+    (sinon l'exclusion n'aurait rien à écarter), `identifier` ne le rend
+    pas, et `porte_des_mots_cles` ne le compte pas.
+    """
+    print("\nUn dessin d'affichage n'est pas un mot-clé")
+    img = cv2.imread(str(CAPTURE_VIKTOR))
+    if img is None:
+        check("capture du 21/11 présente", False, CAPTURE_VIKTOR)
+        return
+
+    for etiquette, centre, attendues in (
+            ("Viktor n1", (802, 900), ("niveau", "aura")),
+            ("Viktor n2", (959, 900), ("niveau", "aura")),
+            ("Kennen", (1115, 900), ("niveau",))):
+        familles = mce.familles_lues(img, centre)
+        for famille in attendues:
+            check(f"{etiquette:<10} : le dessin « {famille} » EST reconnu",
+                  famille in familles, familles)
+        noms = mce.identifier(img, centre)
+        check(f"{etiquette:<10} :    et `identifier` ne le rend pas",
+              not (set(noms) & set(mce.AFFICHAGE.values())
+                   or set(noms) & set(mce.AFFICHAGE)), noms)
+
+    # LE CAS QUI N'EXISTE SUR AUCUNE DES QUATRE CAPTURES : une unité dont
+    # TOUTES les icônes sont des dessins d'affichage — un champion monté
+    # de niveau et sans aucun mot-clé. On ne le fabrique pas en image
+    # (une éprouvette qui dessine l'état à refuser ne prouve rien, cf.
+    # `bilan.py` le 08/11) : on bouchonne la LECTURE et on juge la
+    # DÉCISION, qui est la seule chose en cause ici.
+    vraie_lecture = mce.familles_lues
+    try:
+        mce.familles_lues = lambda *a, **k: ["niveau"]
+        check("un champion qui n'affiche QUE son niveau n'a reçu aucun mot-clé",
+              mce.porte_des_mots_cles(img, (802, 900)) is False)
+        mce.familles_lues = lambda *a, **k: ["niveau", "aura"]
+        check("   niveau + effet de zone non plus",
+              mce.porte_des_mots_cles(img, (802, 900)) is False)
+        # LA CONTRE-ÉPREUVE, sans laquelle la précédente ne prouverait
+        # qu'un `False` systématique : un glyphe INCONNU compte toujours.
+        mce.familles_lues = lambda *a, **k: ["niveau", None]
+        check("   mais un glyphe inconnu à côté, OUI",
+              mce.porte_des_mots_cles(img, (802, 900)) is True)
+        mce.familles_lues = lambda *a, **k: ["niveau", "elusive"]
+        check("   et un mot-clé reconnu, OUI",
+              mce.porte_des_mots_cles(img, (802, 900)) is True)
+    finally:
+        mce.familles_lues = vraie_lecture
+
+
+def test_la_planche_montre_chaque_gabarit():
+    """
+    LA PLANCHE EST LA CONTRE-ÉPREUVE DE L'ÉTIQUETAGE (demandée par Ewan
+    le 21/11/2026).
+
+    Rien dans le code ne peut dire qu'un gabarit porte le bon nom : une
+    icône mal nommée se reconnaît elle-même, et tous les tests passent.
+    Le seul recours est de MONTRER la bibliothèque à celui qui a
+    étiqueté. On vérifie donc ici ce qu'une image peut garantir : une
+    vignette par variante, aucune vide — une case noire serait un
+    gabarit perdu au chargement, exactement le défaut du 08/11 (« le
+    gabarit était écrit, puis IGNORÉ au chargement, sans un mot »).
+
+    ELLE S'ÉCRIT DANS UN DOSSIER TEMPORAIRE. Une suite hors ligne ne
+    laisse rien derrière elle (09/11) : le dépôt a ramassé 0,98 Go de
+    captures produites par des tests avant qu'on s'en aperçoive.
+    """
+    print("\nLa planche des gabarits")
+    import tempfile, shutil
+    dossier = tempfile.mkdtemp(prefix="planche_")
+    try:
+        chemin = Path(dossier) / "planche.png"
+        rendu = mce.planche(chemin)
+        check("la planche est écrite", Path(rendu).exists(), rendu)
+        image = cv2.imread(str(chemin))
+        check("et elle est relisible", image is not None)
+        if image is None:
+            return
+        variantes = sum(len(v) for v in mce.charger_gabarits().values())
+        colonnes = min(mce._PLANCHE_COLONNES, variantes)
+        lignes = (variantes + colonnes - 1) // colonnes
+        case_h, case_l = image.shape[0] // lignes, image.shape[1] // colonnes
+        check(f"une vignette par variante ({variantes})",
+              image.shape[0] % lignes == 0 and image.shape[1] % colonnes == 0,
+              image.shape)
+        vides = []
+        for index in range(variantes):
+            ligne, colonne = divmod(index, colonnes)
+            case = image[ligne * case_h:(ligne + 1) * case_h,
+                         colonne * case_l:(colonne + 1) * case_l]
+            # Au-dessus du bandeau de légende : le glyphe lui-même.
+            glyphe = case[:case_h - mce._PLANCHE_LEGENDE]
+            if int((glyphe > 200).sum()) < 20:
+                vides.append(index)
+        check("aucune vignette vide — aucun gabarit perdu", not vides, vides)
+    finally:
+        shutil.rmtree(dossier, ignore_errors=True)
+
+
 def main():
     for test in (test_la_barre_se_lit_la_ou_elle_est,
                  test_un_mot_cle_accorde_se_voit,
@@ -718,7 +989,13 @@ def main():
                  test_le_decoupage_suit_le_chemin_de_lecture,
                  test_la_barre_adverse_se_lit_en_haut_de_la_carte,
                  test_les_deux_rangees_dune_barre_tassee_ne_se_confondent_pas,
-                 test_une_tache_hors_du_bandeau_nest_pas_une_icone):
+                 test_une_tache_hors_du_bandeau_nest_pas_une_icone,
+                 test_chaque_icone_du_lexique_a_sa_boite,
+                 test_les_familles_blanche_et_rouge_se_voient,
+                 test_une_boite_qui_touche_le_bord_de_la_bande_nest_pas_une_icone,
+                 test_chaque_icone_du_lexique_est_nommee,
+                 test_un_dessin_daffichage_nest_pas_un_mot_cle,
+                 test_la_planche_montre_chaque_gabarit):
         test()
     print()
     if FAILURES:
