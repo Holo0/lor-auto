@@ -1395,6 +1395,17 @@ def lire_les_mots_cles(screen, zones: dict) -> int:
     exécutions fraîches 50.7-52.5 ms (moyenne 51.5 ms) ; gabarits en
     cache : 43.1-43.6 ms.
 
+    REMESURÉ LE 21/11/2026, après la correction de la segmentation (bande
+    miroir côté adverse, agglomération des fragments en 2D, garde du
+    bandeau noir), sur la MÊME scène mais ses SEPT unités de plateau —
+    les deux adverses comprises, qui n'étaient pas lues avant :
+    **44.3 ms avant / 50.2 ms après**, gabarits en cache. La hausse est
+    le travail EN PLUS : 24 glyphes comparés au lieu de 20, soit
+    **2,1 ms par glyphe après contre 2,2 ms avant**. La segmentation
+    seule passe de 0,09 à 0,28 ms par unité (agglomération et garde du
+    bandeau compris) ; l'identification reste à 5,5-9,1 ms par unité
+    porteuse. Rapporté aux ~2200 ms d'un instantané : **2,3 %**.
+
     **RESTE marginalement au-dessus du budget de 50 ms fixé pour cette
     tâche, à froid seulement** (à chaud — le régime réel — c'est sous la
     barre). Décision du contrôleur (20/11/2026) : commiter quand même,
@@ -1409,9 +1420,17 @@ def lire_les_mots_cles(screen, zones: dict) -> int:
         return 0
     enrichies = 0
     for nom in ZONES_DE_PLATEAU:
+        # CHEZ L'ADVERSAIRE, LA BARRE EST EN HAUT DE LA CARTE
+        # (21/11/2026) : statistiques et mots-clés y sont inversés. On
+        # lisait `dy +38..+82` pour tout le monde, donc la zone des
+        # STATISTIQUES en face — le camp où Provocateur, Insaisissable
+        # et Redoutable décident de la légalité et de la survie d'un
+        # blocage était entièrement aveugle. Le côté vient de la ZONE,
+        # pas de la carte : c'est la même source que `ZONES_DE_PLATEAU`.
+        adverse = nom.startswith("enemy")
         for carte in zones.get(nom, ()) or ():
             try:
-                lus = mots_cles_ecran.identifier(screen, carte.center)
+                lus = mots_cles_ecran.identifier(screen, carte.center, adverse)
             except Exception as exc:   # une lecture ratée n'arrête pas un combat
                 LOGGER.warning(
                     "Lecture des mots-clés de %s impossible (%s) : carte ignorée.",

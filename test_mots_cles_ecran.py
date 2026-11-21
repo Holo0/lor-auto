@@ -22,6 +22,17 @@ CAPTURE = Path(__file__).parent / "captures_reference" / "unite_stun_20261114_23
 CAPTURE_20 = (Path(__file__).parent / "captures_reference" / "mots_cles"
               / "scene_20261120_201157.png")
 
+# LES DEUX SCÈNES DU 21/11/2026, étiquetées par Ewan (cf. CLAUDE.md,
+# « Le lexique des icônes »). Ce sont les premières où une barre porte
+# PLUS DE QUATRE mots-clés : le jeu les tasse alors sur DEUX niveaux en
+# quinconce, ce que ni le 14/11 (≤ 5 icônes alignées) ni le 20/11 (4
+# alignées) ne pouvaient montrer. Elles portent aussi les premières
+# unités ADVERSES dont la barre est garnie.
+CAPTURE_KENNEN = (Path(__file__).parent / "captures_reference" / "mots_cles"
+                  / "kennen_20261121_034644.png")
+CAPTURE_VIKTOR = (Path(__file__).parent / "captures_reference" / "mots_cles"
+                  / "victor_20261121_035752.png")
+
 # Les CINQ Pâle orchestre (06SI009) de la même scène
 # (`scene_20261120_201157.json`), centres recalculés par
 # `lor_api.rect_center_screen` — pas une approximation à l'œil. La même
@@ -57,22 +68,27 @@ def check(label, condition, detail=None):
 class _Carte:
     """Le minimum de BoardCard dont ce module a besoin."""
 
-    def __init__(self, nom, card_id, centre, keywords=()):
+    def __init__(self, nom, card_id, centre, keywords=(), local=True):
         self.name, self.card_id, self.center = nom, card_id, centre
         self.keywords = tuple(keywords)
         self.keyword_refs = tuple(keywords)
+        # LE CÔTÉ DÉCIDE OÙ REGARDER (21/11/2026) : chez l'adversaire la
+        # barre est en HAUT de la carte, les statistiques en bas.
+        self.local = local
 
 
-# La scène, étiquetée par `card_sets` — PAS par l'image.
+# La scène, étiquetée par `card_sets` — PAS par l'image. Les trois
+# dernières sont des unités ADVERSES (y = 180) : leur barre, si elles en
+# avaient une, serait en HAUT de leur carte.
 SCENE = [
-    # nom,                   id,  centre,       imprimés,        porte des icônes ?
-    ("Swain", 201, (724, 900), ("Fearsome",), True),
-    ("Enraged Firespitter", 202, (880, 900), ("Challenger",), True),
-    ("Legion Saboteur", 203, (1037, 900), (), True),
-    ("Arachnoid Sentry", 204, (1194, 900), (), False),
-    ("House Spider", 301, (802, 180), (), False),
-    ("Spiderling", 302, (959, 180), (), False),
-    ("Imperial Demolitionist", 303, (1115, 180), (), False),
+    # nom,                   id,  centre,       imprimés,     à nous ? porte des icônes ?
+    ("Swain", 201, (724, 900), ("Fearsome",), True, True),
+    ("Enraged Firespitter", 202, (880, 900), ("Challenger",), True, True),
+    ("Legion Saboteur", 203, (1037, 900), (), True, True),
+    ("Arachnoid Sentry", 204, (1194, 900), (), True, False),
+    ("House Spider", 301, (802, 180), (), False, False),
+    ("Spiderling", 302, (959, 180), (), False, False),
+    ("Imperial Demolitionist", 303, (1115, 180), (), False, False),
 ]
 
 
@@ -95,10 +111,10 @@ def test_la_barre_se_lit_la_ou_elle_est():
         check("capture de référence présente", False, CAPTURE)
         return
 
-    for nom, _, centre, _, attendu in SCENE:
-        lu = mce.porte_des_mots_cles(img, centre)
+    for nom, _, centre, _, local, attendu in SCENE:
+        lu = mce.porte_des_mots_cles(img, centre, adverse=not local)
         check(f"{nom:<24} porte des icônes={attendu}", lu is attendu,
-              f"lu {lu} — {len(mce.icones(img, centre))} icône(s)")
+              f"lu {lu} — {len(mce.icones(img, centre, adverse=not local))} icône(s)")
 
 
 def test_un_mot_cle_accorde_se_voit():
@@ -126,7 +142,7 @@ def test_un_mot_cle_accorde_se_voit():
     check("une carte qui a des mots-clés IMPRIMÉS n'est pas jugée ici",
           mce.a_recu_un_mot_cle(img, swain) is False)
 
-    cartes = [_Carte(n, i, c, k) for n, i, c, k, _ in SCENE]
+    cartes = [_Carte(n, i, c, k, local) for n, i, c, k, local, _ in SCENE]
     check("une seule renforcée sur la scène",
           mce.cartes_renforcees(img, cartes) == {203},
           mce.cartes_renforcees(img, cartes))
@@ -262,9 +278,8 @@ def test_un_glyphe_fragmente_se_recolle_entier():
         check("capture de référence présente", False, CAPTURE)
         return
     # Firespitter colle à une grande tache de bordure (40×30 à 92,0) :
-    # recoller la colonne entière donnerait une boîte > ICONE_COTE_MAX,
-    # refusée — c'est ce refus qui laisse son glyphe réel (22×20) compter
-    # tout seul, plutôt que de faire disparaître les deux.
+    # celle-ci dépasse DÉJÀ la taille d'un glyphe, donc elle est écartée
+    # avant l'agglomération et ne peut plus servir de pont (21/11/2026).
     #
     # ON ASSERTE LA PROPRIÉTÉ, PAS LE TUPLE (20/11/2026, revue finale).
     # Ce test gravait `[(84, 20, 22, 20, 204)]` : l'origine exacte et
@@ -272,34 +287,44 @@ def test_un_glyphe_fragmente_se_recolle_entier():
     # de couleur ou toucher à `FRAGMENT_AIRE_MIN` les aurait fait rougir
     # sans que rien de ce qu'il garde ait bougé — le motif qui a mordu le
     # projet quatre fois (`test_restrictions_levees`, `test_recovered_
-    # screen_resets_the_counter`, `RESERVED_FAMILIES`, le Joker). Ce
-    # qu'on garde : UN glyphe, et de taille plausible. L'aire reste dans
-    # le `detail`, pour la lire le jour où ça rougit.
+    # screen_resets_the_counter`, `RESERVED_FAMILIES`, le Joker).
+    #
+    # DEUX GLYPHES, PAS UN (corrigé le 21/11/2026). Ce test exigeait UN
+    # seul glyphe, au motif du 20/11 que « ses deux fragments en trop
+    # n'étaient que le bord d'une tache de bordure voisine ». La capture
+    # dit le contraire : la barre de Firespitter porte DEUX icônes
+    # orange, et ce ne sont pas les tests qui le prouvent mais les
+    # GABARITS — elles sortent nommées, Surpuissance (0.712, marge
+    # 0.333) et Provocateur (0.710, marge 0.317), aux mêmes niveaux que
+    # la validation croisée du 20/11. Provocateur est son mot-clé
+    # IMPRIMÉ ; Surpuissance lui a été accordée en jeu.
     lues = mce.icones(img14, (880, 900))
-    check("Firespitter garde UN seul glyphe malgré la tache voisine",
-          len(lues) == 1, lues)
-    if len(lues) == 1:
-        x, y, w, h, aire = lues[0]
-        check("   et ce glyphe a une taille de glyphe",
-              mce._est_un_glyphe(w, h, aire), lues)
-        # La tache de bordure fait 40×30 : si la fusion était passée, la
-        # boîte dépasserait ICONE_COTE_MAX. C'est ce que le garde refuse.
-        check("   il n'a pas avalé la tache de bordure (40×30)",
-              w <= mce.ICONE_COTE_MAX and h <= mce.ICONE_COTE_MAX, lues)
+    check("Firespitter : ses DEUX glyphes, et pas la tache voisine",
+          len(lues) == 2, lues)
+    for index, boite in enumerate(lues):
+        x, y, w, h, aire = boite
+        check(f"   [{index}] a une taille de glyphe",
+              mce._est_un_glyphe(w, h, aire), boite)
+        # La tache de bordure fait 40×30 : aucune boîte ne doit l'avoir
+        # avalée.
+        check(f"   [{index}] n'a pas avalé la tache de bordure (40×30)",
+              w <= mce.ICONE_COTE_MAX and h <= mce.ICONE_COTE_MAX, boite)
 
-    # LE 5e GLYPHE DE SWAIN est l'un des deux effets annoncés du
-    # recollage (4 → 5) ; il n'était vérifié nulle part. L'autre moitié,
-    # Firespitter (3 → 1), l'est juste au-dessus.
-    check("Swain : cinq icônes, le 5e glyphe recollé compris",
+    # SWAIN EN PORTE CINQ, comptées sur la capture : bouclier orange,
+    # face grimaçante orange, éclair cyan, arcs cyan, aile cyan.
+    check("Swain : ses cinq icônes, les glyphes recollés compris",
           len(mce.icones(img14, (724, 900))) == 5, mce.icones(img14, (724, 900)))
     # Les quatre vierges restent à zéro — la propriété qui porte tout le
-    # module ne doit RIEN céder à un recollage plus permissif.
-    for nom, centre in (("Arachnoid Sentry", (1194, 900)),
-                         ("House Spider", (802, 180)),
-                         ("Spiderling", (959, 180)),
-                         ("Imperial Demolitionist", (1115, 180))):
-        check(f"{nom} reste vierge malgré le recollage par colonne",
-              mce.icones(img14, centre) == [], mce.icones(img14, centre))
+    # module ne doit RIEN céder à un recollage plus permissif. Les trois
+    # dernières sont ADVERSES : leur barre, s'il y en avait une, serait
+    # en haut de la carte.
+    for nom, centre, adverse in (("Arachnoid Sentry", (1194, 900), False),
+                                 ("House Spider", (802, 180), True),
+                                 ("Spiderling", (959, 180), True),
+                                 ("Imperial Demolitionist", (1115, 180), True)):
+        check(f"{nom} reste vierge malgré le recollage",
+              mce.icones(img14, centre, adverse=adverse) == [],
+              mce.icones(img14, centre, adverse=adverse))
 
 
 def test_les_quatre_icones_sont_identifiees():
@@ -433,6 +458,159 @@ def test_le_decoupage_suit_le_chemin_de_lecture():
           mce.decouper(None, CENTRES_ORCHESTRE[0], 0) is None)
 
 
+# ============================================================
+# Les deux défauts du 21/11/2026
+# ============================================================
+# MILIEU DU BANDEAU. Mesuré sur les neuf unités porteuses des quatre
+# captures : le bandeau noir occupe dy +47..+88 de notre côté. Son
+# milieu, +68, sépare les deux niveaux d'une barre tassée — centres
+# mesurés +59 à +62 en haut, +74 à +78 en bas.
+MILIEU_BANDEAU = 68
+
+
+def _centre_vertical(boite, haut_de_bande):
+    """dy du centre d'une boîte, ramené au repère de `card.center`."""
+    return haut_de_bande + boite[1] + boite[3] / 2
+
+
+def test_la_barre_adverse_se_lit_en_haut_de_la_carte():
+    """
+    LE CAMP ADVERSE ÉTAIT ENTIÈREMENT AVEUGLE (21/11/2026).
+
+    Chez l'adversaire, statistiques et barre de mots-clés sont
+    INVERSÉES : statistiques en bas, barre en haut. `lire_les_mots_cles`
+    lisait `dy +38..+82` pour tout le monde, donc chez l'adversaire la
+    zone des STATISTIQUES. C'est le côté où Provocateur, Insaisissable
+    et Redoutable décident de la légalité et de la survie d'un blocage.
+
+    L'ORACLE NE VIENT PAS DE L'IMAGE : 02BW032T1 « Powder Keg » IMPRIME
+    `Immobile` et `Vulnerable` dans `card_sets` — deux mots-clés, donc au
+    moins deux icônes, quoi qu'on voie à l'écran. 01SI048 « Cursed
+    Keeper » en imprime deux aussi (`Can't Block`, `Last Breath`).
+    À l'inverse 02BW058 « Jagged Butcher » n'imprime que `Plunder`, un
+    déclencheur sans icône : sa carte n'a aucune barre.
+    """
+    print("\nLa barre des unités ADVERSES")
+    for etiquette, chemin, centre, mini in (
+            ("Powder Keg (kennen)", CAPTURE_KENNEN, (880, 180), 2),
+            ("Powder Keg (viktor)", CAPTURE_VIKTOR, (959, 180), 2),
+            ("Cursed Keeper", CAPTURE_20, (1037, 180), 1),
+            ("Vaults of Helia", CAPTURE_20, (880, 180), 1)):
+        img = cv2.imread(str(chemin))
+        if img is None:
+            check(f"capture présente ({etiquette})", False, chemin)
+            continue
+        lues = mce.icones(img, centre, adverse=True)
+        check(f"{etiquette:<22} : au moins {mini} icône(s) lue(s)",
+              len(lues) >= mini, lues)
+        # LA CONTRE-ÉPREUVE, sans laquelle le test ne prouverait rien :
+        # dans la bande de NOS unités, la même carte ne rend rien — c'est
+        # exactement l'état d'avant le correctif.
+        check(f"   et {mini and 'zéro' or ''} du mauvais côté, rien n'est lu",
+              mce.icones(img, centre) == [], mce.icones(img, centre))
+
+    img = cv2.imread(str(CAPTURE_KENNEN))
+    if img is not None:
+        check("Jagged Butcher (Plunder, aucune barre) reste à zéro",
+              mce.icones(img, (1037, 180), adverse=True) == [],
+              mce.icones(img, (1037, 180), adverse=True))
+
+    # ZÉRO FAUX POSITIF SUR LES VIERGES DU 14/11 — trois des quatre sont
+    # ADVERSES, et c'est la bande miroir qui les lit désormais.
+    img14 = cv2.imread(str(CAPTURE))
+    if img14 is None:
+        check("capture du 14/11 présente", False, CAPTURE)
+        return
+    for nom, centre in (("House Spider", (802, 180)),
+                        ("Spiderling", (959, 180)),
+                        ("Imperial Demolitionist", (1115, 180))):
+        check(f"{nom:<24} (adverse, vierge) reste à zéro",
+              mce.icones(img14, centre, adverse=True) == [],
+              mce.icones(img14, centre, adverse=True))
+
+
+def test_les_deux_rangees_dune_barre_tassee_ne_se_confondent_pas():
+    """
+    AU-DELÀ DE QUATRE MOTS-CLÉS, LE JEU TASSE LES ICÔNES SUR DEUX
+    NIVEAUX (21/11/2026). Le recollage par colonne du 20/11 chaînait les
+    fragments par leurs seules plages en x : sur deux niveaux il mariait
+    une icône du haut à sa voisine du bas, la boîte dépassait la taille
+    d'un glyphe, et le repli rejugeait chaque fragment seul — une icône
+    sur deux perdue ou fragmentée.
+
+    Comptes étiquetés par Ewan : Kennen (05BC058) SIX icônes, Viktor
+    (03PZ003) SEPT. Ce qu'on exige ici :
+      - la QUINCONCE est vue : au moins deux icônes de chaque côté du
+        milieu du bandeau ;
+      - aucune boîte n'en couvre deux : sa hauteur reste celle d'UNE
+        icône (mesuré : 12 à 27 px, jamais les ~37 px des deux rangées) ;
+      - le compte ne dépasse JAMAIS le nombre d'icônes étiquetées — un
+        faux positif serait pire qu'une icône manquée.
+    """
+    print("\nLes deux rangées d'une barre tassée")
+    for etiquette, chemin, centre, etiquetees in (
+            ("Kennen (kennen)", CAPTURE_KENNEN, (959, 900), 6),
+            ("Kennen (viktor)", CAPTURE_VIKTOR, (1115, 900), 6),
+            ("Viktor gauche", CAPTURE_VIKTOR, (802, 900), 7),
+            ("Viktor droite", CAPTURE_VIKTOR, (959, 900), 7)):
+        img = cv2.imread(str(chemin))
+        if img is None:
+            check(f"capture présente ({etiquette})", False, chemin)
+            continue
+        lues = mce.icones(img, centre)
+        hauts = [b for b in lues
+                 if _centre_vertical(b, mce.BARRE_DY_HAUT) <= MILIEU_BANDEAU]
+        bas = [b for b in lues
+               if _centre_vertical(b, mce.BARRE_DY_HAUT) > MILIEU_BANDEAU]
+        check(f"{etiquette:<16} : la rangée du HAUT est vue", len(hauts) >= 1,
+              [b[:4] for b in lues])
+        check(f"{etiquette:<16} :    et celle du BAS aussi", len(bas) >= 1,
+              [b[:4] for b in lues])
+        check(f"{etiquette:<16} : aucune boîte ne couvre les deux rangées",
+              all(b[3] <= mce.ICONE_COTE_MAX for b in lues), [b[:4] for b in lues])
+        check(f"{etiquette:<16} : jamais plus que les {etiquetees} étiquetées",
+              len(lues) <= etiquetees, len(lues))
+        check(f"{etiquette:<16} : au moins quatre des {etiquetees}",
+              len(lues) >= 4, len(lues))
+
+    # LA RANGÉE DU BAS N'EST PLUS À MOITIÉ PERDUE, et c'est le cœur du
+    # correctif. Kennen porte TROIS icônes en bas (épée, aile dorée,
+    # symbole cyan) : le recollage par colonne n'en rendait que DEUX,
+    # l'aile ayant été mariée à sa voisine du haut.
+    img = cv2.imread(str(CAPTURE_KENNEN))
+    if img is not None:
+        bas = [b for b in mce.icones(img, (959, 900))
+               if _centre_vertical(b, mce.BARRE_DY_HAUT) > MILIEU_BANDEAU]
+        check("Kennen : les TROIS icônes de sa rangée du bas sont lues",
+              len(bas) == 3, [b[:4] for b in bas])
+
+
+def test_une_tache_hors_du_bandeau_nest_pas_une_icone():
+    """
+    UNE ICÔNE EST POSÉE SUR LE BANDEAU NOIR, et c'est ce qui la
+    distingue d'un éclat d'illustration de la même couleur.
+
+    Legion Saboteur n'a qu'UNE icône — le module en comptait DEUX
+    depuis le 14/11. Mesuré sur les quatre captures, luminosité médiane
+    de l'anneau de 3 px qui entoure chaque boîte : 19 à 38 pour les
+    vraies icônes, 139 et 193 pour les deux taches d'illustration qui
+    passaient le garde de taille. Le plancher retenu, 70, laisse 32 de
+    marge sous la pire tache et 32 au-dessus de la pire vraie icône.
+    """
+    print("\nUne tache hors du bandeau n'est pas une icône")
+    img = cv2.imread(str(CAPTURE))
+    if img is None:
+        check("capture du 14/11 présente", False, CAPTURE)
+        return
+    lues = mce.icones(img, (1037, 900))
+    check("Legion Saboteur : une seule icône, posée sur le bandeau",
+          len(lues) == 1, lues)
+    # Swain en porte CINQ, comptées sur la capture — le garde ne doit
+    # pas mordre sur une barre pleine.
+    check("Swain : ses cinq icônes restent", len(mce.icones(img, (724, 900))) == 5,
+          mce.icones(img, (724, 900)))
+
+
 def main():
     for test in (test_la_barre_se_lit_la_ou_elle_est,
                  test_un_mot_cle_accorde_se_voit,
@@ -444,7 +622,10 @@ def main():
                  test_une_unite_sans_icone_nidentifie_rien,
                  test_un_glyphe_etranger_nest_identifie_comme_rien,
                  test_un_gabarit_franchit_les_captures,
-                 test_le_decoupage_suit_le_chemin_de_lecture):
+                 test_le_decoupage_suit_le_chemin_de_lecture,
+                 test_la_barre_adverse_se_lit_en_haut_de_la_carte,
+                 test_les_deux_rangees_dune_barre_tassee_ne_se_confondent_pas,
+                 test_une_tache_hors_du_bandeau_nest_pas_une_icone):
         test()
     print()
     if FAILURES:

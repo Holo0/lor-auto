@@ -953,16 +953,23 @@ def test_la_lecture_decran_est_vraiment_branchee():
 
     On bouchonne `identifier` — la seule couture vers l'image — et on
     regarde ce qui ressort du bout de la chaîne.
+
+    ET LE CÔTÉ FAIT PARTIE DE LA QUESTION (21/11/2026) : chez
+    l'adversaire la barre est en HAUT de la carte. Lire la mauvaise
+    bande ne lève rien et ne journalise rien — c'est exactement la
+    panne MUETTE qui a rendu le camp adverse aveugle. Le bouchon garde
+    donc le drapeau que `lire_les_mots_cles` lui passe.
     """
     print("\nLa lecture d'écran est branchée dans snapshot()")
     board = rect_at_ratio(0.15, code="UNIT_B", card_id=2)
-    install_fakes(nexus_rects() + [board])
+    adverse = rect_at_ratio(0.80, code="UNIT_B", card_id=3, local=False)
+    install_fakes(nexus_rects() + [board, adverse])
 
     vrai = game_state.mots_cles_ecran.identifier
     vus = []
 
-    def bouchon(image, centre):
-        vus.append(centre)
+    def bouchon(image, centre, adverse=False):
+        vus.append((centre, adverse))
         return ("Challenger",)
 
     game_state.mots_cles_ecran.identifier = bouchon
@@ -972,8 +979,11 @@ def test_la_lecture_decran_est_vraiment_branchee():
         game_state.mots_cles_ecran.identifier = vrai
 
     carte = snap.board[0]
+    en_face = snap.enemy_board[0]
     check("l'écran a été interrogé sous l'unité du banc",
-          vus == [carte.center], (vus, carte.center))
+          (carte.center, False) in vus, (vus, carte.center))
+    check("   et AU-DESSUS de l'unité adverse",
+          (en_face.center, True) in vus, (vus, en_face.center))
     check("le mot-clé lu arrive sur la carte de l'instantané",
           carte.keywords_lus == ("Challenger",), carte.keywords_lus)
     check("et `has` le voit", carte.has("Challenger"))

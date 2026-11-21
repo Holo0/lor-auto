@@ -12,14 +12,27 @@ CardCode, CardID, LocalPlayer et la géométrie.
 
 CE QUE LE JEU DESSINE, ET OÙ
 ----------------------------
-Sous l'illustration de chaque unité DU PLATEAU, le jeu pose une barre
-noire hexagonale portant une icône par mot-clé. Mesuré sur
-`captures_reference/unite_stun_20261114_231607.png`, en coordonnées
-RELATIVES à `card.center` (donc valables quelle que soit la position de
-l'unité sur le banc) :
+Sur chaque unité DU PLATEAU, le jeu pose une barre noire hexagonale
+portant une icône par mot-clé — SOUS l'illustration chez nous, AU-DESSUS
+chez l'adversaire (ses statistiques et sa barre sont inversées). Mesuré
+le 21/11/2026 sur les neuf unités porteuses des quatre captures
+témoins, en détectant le bandeau lui-même (la composante sombre,
+V < 70, qui touche la colonne du centre), en coordonnées RELATIVES à
+`card.center` :
 
-      la barre occupe   dy +38 à +82      centrée en x sur card.center
-      une icône fait    12 à 34 px de côté, aire ≥ 60 px
+      le bandeau occupe   dy +47 à +88 chez nous, -88 à -48 en face
+      sa demi-largeur     65 px (Pâle orchestre) à 71 px (Kennen)
+      une icône fait      12 à 34 px de côté, aire ≥ 60 px
+
+La bande LUE est le bandeau entier côté adverse, mais s'arrête à +82
+chez nous : le liseré bleu du plateau monte jusqu'à dy +79 sous nos
+unités et fusionne avec les icônes qu'il touche (voir `BARRE_DY_BAS`).
+
+AU-DELÀ DE QUATRE MOTS-CLÉS, LE JEU TASSE LES ICÔNES SUR DEUX NIVEAUX
+en quinconce — centres mesurés à dy +59..+62 pour la rangée du haut,
++74..+78 pour celle du bas, le bandeau gardant la même hauteur. C'est
+ce que ni la scène du 14/11 (≤ 5 icônes alignées) ni celle du 20/11
+(4 alignées) ne pouvaient montrer.
 
 Les icônes se répartissent en TROIS FAMILLES DE COULEUR, orange, bleu
 clair et magenta (ce dernier ajouté le 20/11/2026, cf. `MAGENTA`
@@ -27,36 +40,50 @@ ci-dessous), nettes et franches sur fond noir.
 
 CE QUI EST MESURÉ, ET CE QUI NE L'EST PAS
 -----------------------------------------
-Sur la seule scène étiquetée dont on dispose — sept unités dont les
-mots-clés imprimés sont connus par `card_sets`. **Compté le 20/11/2026,
-APRÈS le recollage par colonnes** (`_colonnes`), et revérifié ligne à
-ligne le 20/11 au soir : les deux lignes que le recollage a changées
-sont Swain (4 → 5) et Firespitter (3 → 1) ; les cinq autres n'ont jamais
-bougé.
+Quatre scènes, dont trois étiquetées par Ewan. Les comptes ci-dessous
+sont ceux du 21/11/2026 ; la colonne « icônes » est le nombre d'icônes
+VISIBLES sur la capture, celle de droite ce que le module en lit.
 
-      unité                   imprimés   icônes détectées
-      Swain (Fearsome)            1            5
-      Enraged Firespitter          1            1
-      Legion Saboteur              0            2
-      Arachnoid Sentry             0            0
-      House Spider                 0            0
-      Spiderling                   0            0
-      Imperial Demolitionist       0            0
+      scène    unité                     imprimés  icônes  lues
+      14/11    Swain                         1       5      5
+      14/11    Enraged Firespitter           1       2      2
+      14/11    Legion Saboteur               0       1      1
+      14/11    Arachnoid Sentry              0       0      0
+      14/11    House Spider      (adverse)   0       0      0
+      14/11    Spiderling        (adverse)   0       0      0
+      14/11    Imperial Demol.   (adverse)   0       0      0
+      20/11    Pâle orchestre ×5             2       4      4
+      20/11    Vaults of Helia   (adverse)   1       1      1
+      20/11    Cursed Keeper     (adverse)   2       2      1
+      21/11    Kennen                        1       6      5
+      21/11    Kennen (2e capture)           1       6      5
+      21/11    Viktor gauche                 1       7      5
+      21/11    Viktor droite                 1       7      4
+      21/11    Powder Keg ×2     (adverse)   2       3      2
+      21/11    Jagged Butcher    (adverse)   1       0      0
 
-**LA PRÉSENCE EST FIABLE ; LE COMPTE L'EST DEVENU, EN PARTIE**
-(20/11/2026). Les quatre unités sans aucun mot-clé ne déclenchent
-RIEN : zéro faux positif. Un glyphe FRAGMENTÉ (ombre interne,
-antialiasing) ne vaut plus pour plusieurs icônes : `_colonnes` le
-recolle en une seule boîte avant de le juger — c'est ce qui fait
-passer Swain de 4 à 5 (le 5e glyphe était là, vu « à l'œil » depuis le
-14/11, jamais recollé) et Firespitter de 3 à 1 (ses deux fragments
-en trop n'étaient que le bord d'une tache de bordure voisine, pas des
-icônes). Ce qui reste VRAI : deux glyphes VOISINS qui se touchent sans
-former un rectangle plausible ne sont toujours pas fusionnés à tort —
-`_est_un_glyphe` refuse toute boîte recollée hors de `ICONE_COTE_MAX`,
-et c'est ce refus qui protège Firespitter d'une sur-fusion. On ne rend
-donc toujours pas un compte comme une vérité absolue à l'usage externe
-du module : on rend d'abord « il y en a » ou « il n'y en a pas ».
+**LA PRÉSENCE RESTE LA PROMESSE PRINCIPALE, ET ELLE EST INTACTE** : les
+sept unités sans barre (dont quatre adverses) rendent zéro, et les onze
+qui en ont une rendent au moins une icône. Zéro faux positif, zéro faux
+négatif sur la PRÉSENCE.
+
+**LE COMPTE EST EXACT PARTOUT OÙ LES ICÔNES TIENNENT DANS LES TROIS
+FAMILLES DE COULEUR, et nulle part ailleurs.** Les huit icônes
+manquantes du tableau se nomment, et c'est toujours la même cause — le
+masque ne les voit pas :
+  - le CERCLE ROUGE de Régénération (Kennen, Viktor droite) sort aux
+    teintes 2 à 11, quand `ORANGE` commence à 8 : 55 px sur 202 passent,
+    et il ne reste qu'un ruban de 19×8 ;
+  - la CROIX BLANCHE d'Immobile (Powder Keg) et le BOUCLIER BLANC de
+    « Can't Block » (Cursed Keeper) ont une saturation médiane de 17 :
+    aucune famille ne les couvre ;
+  - la TOUR DORÉE de Robuste (les deux Viktor) touche le liseré doré du
+    cadre de la carte et forme avec lui une composante de 94×11 ;
+  - la FLAMME BLEUE de Volonté (Viktor gauche) fait 10 px de large,
+    sous `ICONE_COTE_MIN`, et se fait absorber par sa voisine.
+Élargir les familles est un changement de MASQUE : il déplacerait aussi
+les quatre gabarits existants, qui sont découpés par ce masque-là. C'est
+la tâche qui récolte les gabarits qui devra le faire, pas celle-ci.
 
 **L'IDENTIFICATION EST FAITE POUR QUATRE MOTS-CLÉS, ET C'EST TOUT**
 (20/11/2026). Ewan a étiqueté une scène de cinq Pâle orchestre (06SI009)
@@ -70,22 +97,31 @@ mots-clés n'ont aucun gabarit : une icône qui leur appartient reste,
 à dessein, ABSENTE du tuple rendu — jamais devinée. `keywords.has()`
 reste donc non branché pour tout ce qui dépasse ces quatre-là.
 
-MESURE DE L'IDENTIFICATION (20/11/2026), sur les trois Pâle orchestre
-qui n'ont PAS servi à récolter les gabarits (`scene_20261120_201157.png`,
-centres (959, 900), (1115, 900), (1272, 900) — les gabarits viennent de
-(645, 900) et (802, 900)) :
+LES GABARITS SONT DÉCOUPÉS PAR LE CHEMIN DE LECTURE, DONC ILS SUIVENT
+LA SEGMENTATION (21/11/2026). Celle-ci ayant changé, les huit PNG de
+`mots_cles/` ont été redécoupés sur la MÊME capture, aux MÊMES centres
+et dans le MÊME ordre étiqueté par Ewan — aucune identité nouvelle n'a
+été inventée. C'est la règle que `cut_icone` énonce et que le piège de
+`cut_defi` (08/11) a payée : une forme découpée autrement ne se
+reconnaît plus elle-même. Au passage, Sanctification est désormais
+ENTIÈRE : son gabarit était tronqué à 16×22 parce que le recollage par
+colonne laissait tomber le chevron qui la termine (23×22 avec lui).
 
-      pire score    0.714   (Hallowed en (959, 900))
-      pire marge    0.320   (même glyphe, Hallowed contre Ephemeral)
+MESURE DE L'IDENTIFICATION (refaite le 21/11/2026) sur les trois Pâle
+orchestre qui n'ont PAS servi à récolter les gabarits (centres
+(959, 900), (1115, 900), (1272, 900) — les sources sont (645, 900) et
+(802, 900)), plus la validation croisée du 14/11 :
 
-Les deux dépassent largement SCORE_SUR (0.60) et MARGE_SURE (0.10). En
-élargissant aux cinq Pâle orchestre (les deux sources comprises, à 1.000
-par construction) et à la validation croisée du 14/11 (Firespitter,
-score 0.710, marge 0.317), l'ensemble des vrais positifs mesurés tient
-dans [0.710, 1.000] en score et [0.317, 0.640] en marge — à comparer aux
-glyphes ÉTRANGERS de Swain (14/11), qui ne dépassent jamais 0.409 de
-score ni 0.073 de marge contre nos quatre gabarits (`test_mots_cles_ecran.
-test_un_glyphe_etranger_nest_identifie_comme_rien`).
+      pire score    0.710   (Provocateur sur Firespitter, capture du 14/11)
+      pire marge    0.317   (le même glyphe)
+      vrais positifs            score 0.710 à 1.000 | marge 0.317 à 0.676
+      glyphes ÉTRANGERS         score ≤ 0.472       | marge ≤ 0.126
+
+Les étrangers sont désormais les 22 glyphes des scènes du 14/11 et du
+21/11 dont AUCUN n'a de gabarit — les onze types nommés par Ewan
+compris. Aucun n'est identifié : le plancher de SCORE_SUR (0.60) les
+refuse tous, avec 0.128 de marge sous le meilleur d'entre eux et 0.11
+au-dessus du pire vrai positif.
 
 CE QUE ÇA PERMET DÉJÀ. Une unité SANS mot-clé imprimé qui porte une
 icône a forcément été RENFORCÉE en jeu — et c'est observé : Legion
@@ -105,15 +141,30 @@ PIÈGES MESURÉS ET ÉCARTÉS
   - LA COULEUR SANS BORNE VERTICALE. Compter les pixels orange ou bleus
     sous la carte sature à 100 % pour TOUT LE MONDE : le liseré bleu
     électrique du plateau et la rangée suivante entrent dans la fenêtre.
-    C'est la fenêtre dy +38..+82 qui les exclut, pas la teinte.
+    C'est la fenêtre verticale qui les exclut, pas la teinte.
+  - LE CLAIR DANS LE BANDEAU SOMBRE, au lieu des familles de couleur
+    (essayé le 21/11/2026). Segmenter « tout ce qui est brillant à
+    l'intérieur du rectangle noir » voit TOUT, y compris le cercle
+    rouge et la croix blanche : Kennen passe à 6 icônes sur 6 et Powder
+    Keg à 3 sur 3, du premier coup. Mais les glyphes y grossissent du
+    bord inférieur du bandeau (Provocateur 23×30 au lieu de 23×22) et
+    **Sanctification cesse d'être identifiée sur deux à quatre des cinq
+    Pâle orchestre, à tous les seuils de clarté essayés (120, 140, 160,
+    180)**. Changer de masque, c'est refaire les gabarits : ça
+    appartient à la tâche qui les récolte.
+  - L'ENVELOPPE CONVEXE DU BANDEAU comme masque spatial : elle déborde
+    sur les coins de l'hexagone et le liseré du plateau y rentre
+    (Kennen, une 7e boîte de 31×14 px). Le remplissage ligne à ligne de
+    la composante sombre, lui, perd les glyphes qui touchent le bord du
+    bandeau — deux icônes sur quatre du Pâle orchestre.
 
-PLUS UNE SEULE SCÈNE, DÉSORMAIS (mis à jour le 20/11/2026). La
-géométrie de présence (dy +38..+82) reste mesurée sur la seule scène du
-14/11/2026, sept unités — bornes prises large, à resserrer dès qu'une
-autre capture étiquetée sera disponible. L'IDENTIFICATION, elle, ne
-repose plus sur cette scène-là : c'est celle du 20/11/2026 (cinq Pâle
-orchestre étiquetés par Ewan) qui porte toute l'identification des
-quatre mots-clés, avec Firespitter (14/11) en validation croisée.
+QUATRE SCÈNES, DÉSORMAIS (mis à jour le 21/11/2026). La géométrie du
+bandeau est mesurée sur les neuf unités porteuses des quatre captures
+témoins, des deux côtés du plateau. L'IDENTIFICATION repose sur la
+scène du 20/11/2026 (cinq Pâle orchestre étiquetés par Ewan) avec
+Firespitter (14/11) en validation croisée ; les onze types de glyphes
+nommés par Ewan le 21/11 n'ont AUCUN gabarit et servent de témoins
+NÉGATIFS.
 """
 
 from __future__ import annotations
@@ -134,12 +185,33 @@ import digits
 # RETOMBER sur le comportement d'avant passe donc par ce logger.
 LOGGER = logging.getLogger(__name__)
 
-# La barre d'icônes, en coordonnées relatives à `card.center`. Mesurée
-# sur les trois unités porteuses de la capture de référence ; les bornes
-# excluent le liseré bleu du plateau (qui commence vers dy +85) et les
-# badges de statistiques (au-dessus de l'illustration).
-BARRE_DY_HAUT = 38
+# La barre d'icônes, en coordonnées relatives à `card.center`.
+#
+# OÙ EST LE BANDEAU, MESURÉ (21/11/2026). Le rectangle noir se détecte
+# tout seul (la composante sombre, V < 70, qui touche la colonne du
+# centre) : sur les NEUF unités porteuses des quatre captures témoins il
+# occupe **dy +47..+88 de notre côté** et **dy -88..-48 chez
+# l'adversaire** — un vrai miroir, à un pixel près. Sa demi-largeur va
+# de 65 (Pâle orchestre) à 71 px (Kennen, Viktor).
+#
+# ON NE LIT PAS LE BANDEAU ENTIER DE NOTRE CÔTÉ, ET C'EST MESURÉ. Le
+# liseré bleu du plateau MONTE jusqu'à dy +79 sous nos unités et touche
+# les icônes : porter `BARRE_DY_BAS` de 82 à 88 (le vrai bas du bandeau)
+# fait fusionner Sanctification avec ce liseré en une composante de
+# 118×32 px, et le Pâle orchestre tombe de 4 icônes à 3 sur DEUX des
+# cinq vignettes du 20/11, plus une icône fantôme sur une troisième. On
+# garde donc +82 et on accepte que le bas d'un glyphe de la rangée
+# inférieure soit rogné (Kennen : épée lue +70..+82 au lieu de +70..+86)
+# — un glyphe rogné reste compté, un glyphe fusionné est perdu.
+#
+# CÔTÉ ADVERSE IL N'Y A PAS DE LISERÉ AU-DESSUS DES CARTES : la bande y
+# couvre donc le bandeau ENTIER, ce qui laisse la place aux deux rangées
+# d'une barre tassée. Vérifié : les trois unités adverses VIERGES du
+# 14/11 restent à zéro icône avec cette bande.
+BARRE_DY_HAUT = 47
 BARRE_DY_BAS = 82
+BARRE_ADVERSE_DY_HAUT = 88      # distance AU-DESSUS du centre
+BARRE_ADVERSE_DY_BAS = 48
 BARRE_DEMI_LARGEUR = 80
 
 # Une icône : ni un éclat de décor, ni la barre entière.
@@ -156,16 +228,42 @@ ICONE_AIRE_MIN = 60
 # n'aurait rougi si `icones()` avait un jour tort sur le DÉCOUPAGE,
 # puisque les cinq vignettes de la scène se fragmentent à l'identique
 # (auto-cohérence sans vérité : le piège de `cut_defi` le 08/11).
-# `icones()` recolle donc les fragments d'une même COLONNE (plages en x
-# qui se touchent) avant de juger leur taille. Fragments exclus de la
-# fusion : sous `FRAGMENT_AIRE_MIN` (bruit d'antialiasing/compression,
-# jamais un bout de glyphe réel) et, au moment de juger la boîte
-# recollée, tout chevauchement dont le résultat dépasserait
-# `ICONE_COTE_MAX` — deux icônes VOISINES qui se touchent ne sont pas un
-# glyphe fragmenté, et c'est ce garde, lui seul, qui empêche Firespitter
-# (un vrai glyphe 22×20 collé à une grande tache de bordure 40×30) de
-# fusionner en un rectangle refusé puis de disparaître.
+# `icones()` recolle donc les fragments voisins avant de juger leur
+# taille. Sont exclus de la fusion les fragments sous
+# `FRAGMENT_AIRE_MIN` (bruit d'antialiasing/compression, jamais un bout
+# de glyphe réel).
 FRAGMENT_AIRE_MIN = 20
+
+# LE RECOLLAGE PAR COLONNE SUPPOSAIT UNE SEULE LIGNE (corrigé le
+# 21/11/2026). Au-delà de quatre mots-clés le jeu TASSE les icônes sur
+# DEUX niveaux en quinconce : chaîner les fragments par leurs seules
+# plages en x mariait alors une icône du haut à sa voisine du bas (elles
+# se chevauchent en x de 5 px sur Viktor), la boîte dépassait
+# `ICONE_COTE_MAX`, et le repli rejugeait chaque fragment seul — une
+# icône sur deux perdue ou fragmentée (mesuré : 5 boîtes pour 7 icônes,
+# 4 pour 6, 4 pour 7).
+#
+# ON AGGLOMÈRE DONC LES PLUS PROCHES D'ABORD, ET JAMAIS AU-DELÀ DE LA
+# TAILLE D'UN GLYPHE. Deux mesures fixent `ECART_FRAGMENT` : les
+# fragments d'UN MÊME glyphe sont séparés de 0 ou 1 px (Surpuissance :
+# 0 partout ; le symbole cyan de Kennen : 1), tandis que deux icônes
+# voisines de la MÊME rangée sont séparées de 1 à 9 px — c'est donc le
+# plafond de taille, et non l'écart, qui les sépare (Challenger +
+# Surpuissance feraient 51 px de large).
+ECART_FRAGMENT = 1
+
+# UNE ICÔNE EST POSÉE SUR LE BANDEAU NOIR (21/11/2026). C'est ce qui la
+# distingue d'un éclat d'illustration de la même couleur, et c'est la
+# seule chose qui le fasse : la teinte, la taille et l'aire ne suffisent
+# pas. Mesuré sur les quatre captures, luminosité MÉDIANE de l'anneau de
+# 3 px qui entoure chaque boîte retenue : **19 à 38 pour les vraies
+# icônes**, **139 et 193 pour les deux taches d'illustration** qui
+# passaient tous les autres gardes (le liseré violet du bord de carte
+# sous House Spider, et la tache de l'illustration que Legion Saboteur
+# comptait comme une seconde icône depuis le 14/11). Le plancher laisse
+# 32 de marge de chaque côté.
+FOND_SOMBRE_MAX = 70
+MARGE_ANNEAU = 3
 
 # Les familles de couleur, en HSV OpenCV. Franches sur fond noir.
 ORANGE = ((8, 130, 120), (28, 255, 255))
@@ -207,32 +305,92 @@ def _boite_recollee(fragments: list) -> tuple:
     return (x0, y0, x1 - x0, y1 - y0, aire)
 
 
-def _colonnes(fragments: list) -> list:
-    """
-    Chaîne les fragments dont les plages en x se TOUCHENT ou se
-    chevauchent, triés de gauche à droite : la coupure d'un glyphe
-    fragmenté (ombre interne, antialiasing) reste dans sa colonne —
-    deux glyphes voisins qui ne se touchent pas en ouvrent une autre.
-    """
-    groupes: list = []
-    fin_courante = None
-    for fragment in sorted(fragments, key=lambda f: f[0]):
-        x, _, largeur = fragment[0], fragment[1], fragment[2]
-        if groupes and x <= fin_courante:
-            groupes[-1].append(fragment)
-            fin_courante = max(fin_courante, x + largeur)
-        else:
-            groupes.append([fragment])
-            fin_courante = x + largeur
-    return groupes
+def _ecart(a: tuple, b: tuple) -> int:
+    """Le plus grand des deux écarts (en x, en y) entre deux boîtes ;
+    zéro si elles se touchent ou se chevauchent sur cet axe."""
+    ex = max(b[0] - (a[0] + a[2]), a[0] - (b[0] + b[2]), 0)
+    ey = max(b[1] - (a[1] + a[3]), a[1] - (b[1] + b[3]), 0)
+    return max(ex, ey)
 
 
-def _icones_et_masque(image, centre: tuple):
+def _trop_grand(largeur: int, hauteur: int) -> bool:
+    """Cette boîte dépasse-t-elle la taille d'un glyphe ? C'est le seul
+    plafond de l'agglomération : il empêche le liseré du plateau (87×24
+    px sous Kennen) et la tache de bordure de Firespitter (40×30) de
+    servir de pont entre des icônes qu'ils touchent sans leur
+    appartenir, et il sépare les deux rangées d'une barre tassée."""
+    return largeur > ICONE_COTE_MAX or hauteur > ICONE_COTE_MAX
+
+
+def _grouper(fragments: list) -> list:
+    """
+    Agglomère les fragments d'un même glyphe : la paire la plus PROCHE
+    d'abord, et jamais une boîte plus grande qu'un glyphe.
+
+    L'ordre compte, et il est la moitié du correctif du 21/11/2026 : sur
+    le Pâle orchestre, les quatre morceaux de Surpuissance se touchent
+    (écart 0) alors que Surpuissance et Challenger sont séparés de 1 px.
+    En fusionnant les écarts nuls d'abord, Surpuissance se reforme
+    (26×24) et le couple qu'elle forme ensuite avec Challenger (51 px de
+    large) est refusé par la taille. Fusionner dans l'ordre de lecture
+    aurait soudé les deux et perdu l'une des deux icônes.
+    """
+    paquets = [[f] for f in fragments]
+    boites = list(fragments)
+    while True:
+        meilleur = None
+        for i in range(len(paquets)):
+            for j in range(i + 1, len(paquets)):
+                ecart = _ecart(boites[i], boites[j])
+                if ecart > ECART_FRAGMENT:
+                    continue
+                union = _boite_recollee([boites[i], boites[j]])
+                if _trop_grand(union[2], union[3]):
+                    continue
+                # Clé totalement ordonnée : écart, puis surface de
+                # l'union, puis position — deux exécutions sur la même
+                # image doivent rendre le même découpage.
+                cle = (ecart, union[2] * union[3], union[0], union[1])
+                if meilleur is None or cle < meilleur[0]:
+                    meilleur = (cle, i, j, union)
+        if meilleur is None:
+            return paquets
+        _, i, j, union = meilleur
+        paquets[i] = paquets[i] + paquets[j]
+        boites[i] = union
+        del paquets[j]
+        del boites[j]
+
+
+def _pose_sur_le_bandeau(fond, boite: tuple) -> bool:
+    """
+    Cette boîte est-elle posée sur le bandeau NOIR ?
+
+    On lit la luminosité médiane de l'anneau de `MARGE_ANNEAU` px qui
+    l'entoure : une icône est cernée de noir, un éclat d'illustration
+    est cerné d'illustration. Voir `FOND_SOMBRE_MAX` pour les mesures.
+    """
+    x, y, largeur, hauteur, _ = boite
+    hauteur_bande, largeur_bande = fond.shape
+    gx0, gy0 = max(0, x - MARGE_ANNEAU), max(0, y - MARGE_ANNEAU)
+    gx1 = min(largeur_bande, x + largeur + MARGE_ANNEAU)
+    gy1 = min(hauteur_bande, y + hauteur + MARGE_ANNEAU)
+    autour = fond[gy0:gy1, gx0:gx1]
+    dehors = np.ones(autour.shape, bool)
+    dehors[y - gy0:y - gy0 + hauteur, x - gx0:x - gx0 + largeur] = False
+    valeurs = autour[dehors]
+    return bool(valeurs.size) and float(np.median(valeurs)) < FOND_SOMBRE_MAX
+
+
+def _icones_et_masque(image, centre: tuple, adverse: bool = False):
     """
     Calcule EN UNE SEULE FOIS le masque de la bande d'icônes et les boîtes
     qu'il contient : (boites, masque), `masque` étant celui dont chaque
     boîte est issue — donc directement tranchable par un appelant qui veut
     aussi les PIXELS d'une icône, pas que sa position.
+
+    `adverse=True` lit la bande EN HAUT de la carte : chez l'adversaire,
+    statistiques et barre de mots-clés sont inversées (21/11/2026).
 
     SOURCE UNIQUE DE LA SEGMENTATION (20/11/2026, revue de la tâche 3).
     `icones()` segmentait, puis `decouper()` segmentait DE NOUVEAU (en
@@ -261,54 +419,73 @@ def _icones_et_masque(image, centre: tuple):
     cx, cy = int(centre[0]), int(centre[1])
     h, w = forme[0], forme[1]
     x0, x1 = cx - BARRE_DEMI_LARGEUR, cx + BARRE_DEMI_LARGEUR
-    y0, y1 = cy + BARRE_DY_HAUT, cy + BARRE_DY_BAS
+    if adverse:
+        y0, y1 = cy - BARRE_ADVERSE_DY_HAUT, cy - BARRE_ADVERSE_DY_BAS
+    else:
+        y0, y1 = cy + BARRE_DY_HAUT, cy + BARRE_DY_BAS
     if x0 < 0 or y0 < 0 or x1 > w or y1 > h:
         return [], None
 
-    masque = _masque_icones(image[y0:y1, x0:x1])
+    bande = image[y0:y1, x0:x1]
+    masque = _masque_icones(bande)
+    # La luminosité de la bande, pour `_pose_sur_le_bandeau` : calculée
+    # UNE fois ici, comme le masque — deux conversions HSV de la même
+    # sous-image finiraient par diverger.
+    fond = cv2.cvtColor(bande, cv2.COLOR_BGR2HSV)[:, :, 2]
     nombre, _, stats, _ = cv2.connectedComponentsWithStats(masque, 8)
+    # ON NE FILTRE PAS LES FRAGMENTS TROP GRANDS ICI, ET C'EST MESURÉ :
+    # l'agglomération refuse déjà toute union qui dépasse un glyphe, donc
+    # un fragment déjà trop grand ne peut fusionner avec rien et finit
+    # seul, refusé par `_est_un_glyphe`. Les écarter en tête ne change
+    # AUCUN compte sur les quatre captures témoins — un garde de plus
+    # sans gain mesuré est un garde de trop.
     fragments = [tuple(int(v) for v in stats[i]) for i in range(1, nombre)
                  if stats[i][4] >= FRAGMENT_AIRE_MIN]
 
     trouvees = []
-    for groupe in _colonnes(fragments):
-        x, y, largeur, hauteur, aire = _boite_recollee(groupe)
-        if _est_un_glyphe(largeur, hauteur, aire):
-            # La colonne ENTIÈRE forme un glyphe plausible : recollée.
-            trouvees.append((x, y, largeur, hauteur, aire))
+    for groupe in _grouper(fragments):
+        boite = _boite_recollee(groupe)
+        if _est_un_glyphe(boite[2], boite[3], boite[4]):
+            # Le groupe ENTIER forme un glyphe plausible : recollé.
+            if _pose_sur_le_bandeau(fond, boite):
+                trouvees.append(boite)
         elif len(groupe) > 1:
-            # Recollée, la colonne n'a plus la taille d'un glyphe — soit
-            # elle a trop grossi (deux icônes qui se touchent), soit elle
-            # reste trop pauvre (débris). On refuse la fusion et on
-            # rejuge chaque fragment pour ce qu'il est, seul.
-            for fx, fy, fw, fh, faire in groupe:
-                if _est_un_glyphe(fw, fh, faire):
-                    trouvees.append((fx, fy, fw, fh, faire))
+            # Recollé, le groupe n'a pas la taille d'un glyphe — il reste
+            # trop pauvre (des débris). On refuse la fusion et on rejuge
+            # chaque fragment pour ce qu'il est, seul.
+            for fragment in groupe:
+                if (_est_un_glyphe(fragment[2], fragment[3], fragment[4])
+                        and _pose_sur_le_bandeau(fond, fragment)):
+                    trouvees.append(fragment)
     return sorted(trouvees, key=lambda b: b[0]), masque
 
 
-def icones(image, centre: tuple) -> list:
+def icones(image, centre: tuple, adverse: bool = False) -> list:
     """
     Les icônes de mots-clés lues sous cette unité : [(x, y, w, h, aire)].
+
+    `adverse=True` pour une unité de l'ADVERSAIRE : sa barre est en haut
+    de la carte, pas en bas.
 
     Rend une liste VIDE dès qu'on ne peut pas lire — pas d'image, cadre
     hors écran, forme inattendue. Même règle que `stun.mouvement` et
     `bilan.juger` : ne rien pouvoir lire n'est pas un verdict.
     """
-    boites, _ = _icones_et_masque(image, centre)
+    boites, _ = _icones_et_masque(image, centre, adverse)
     return boites
 
 
-def decouper(image, centre: tuple, index: int):
+def decouper(image, centre: tuple, index: int, adverse: bool = False):
     """Le masque 0/255 du glyphe d'indice `index`, ou None."""
-    boites, masque = _icones_et_masque(image, centre)
+    boites, masque = _icones_et_masque(image, centre, adverse)
     if masque is None or not 0 <= index < len(boites):
         return None
     x, y, w, h, _ = boites[index]
     return masque[y:y + h, x:x + w]
 
 
-def cut_icone(capture: str, centre: tuple, index: int, nom: str) -> str:
+def cut_icone(capture: str, centre: tuple, index: int, nom: str,
+              adverse: bool = False) -> str:
     """
     Récolte un gabarit depuis une capture ÉTIQUETÉE.
 
@@ -325,7 +502,7 @@ def cut_icone(capture: str, centre: tuple, index: int, nom: str) -> str:
     image = cv2.imread(capture)
     if image is None:
         raise SystemExit(f"capture introuvable : {capture}")
-    masque = decouper(image, centre, index)
+    masque = decouper(image, centre, index, adverse)
     if masque is None or masque.size == 0:
         raise SystemExit(f"aucune icône d'indice {index} sous {centre}")
     chemin = Path(__file__).parent / "mots_cles" / f"{nom}.png"
@@ -337,22 +514,22 @@ def cut_icone(capture: str, centre: tuple, index: int, nom: str) -> str:
     return str(chemin)
 
 
-def porte_des_mots_cles(image, centre: tuple) -> bool:
+def porte_des_mots_cles(image, centre: tuple, adverse: bool = False) -> bool:
     """
     Cette unité affiche-t-elle AU MOINS un mot-clé ?
 
     C'EST LE VERDICT LE MOINS CHER ET LE MIEUX ÉTABLI : juste sur les
-    sept unités de la capture du 14/11 (trois porteuses, quatre vierges),
-    et il ne demande aucun gabarit.
+    dix-huit unités de plateau des quatre captures témoins — onze
+    porteuses, sept vierges dont quatre ADVERSES — et il ne demande
+    aucun gabarit.
 
-    Le COMPTE, lui, est exact partout où l'on connaît la vérité — les
-    cinq Pâle orchestre du 20/11, quatre icônes pour les quatre mots-clés
-    étiquetés par Ewan — mais cette vérité n'existe que là : sur la scène
-    du 14/11, personne ne sait combien de mots-clés Swain porte vraiment,
-    donc ses 5 icônes ne sont ni confirmées ni réfutées. On ne bâtit donc
+    Le COMPTE, lui, n'est exact que là où toutes les icônes tiennent
+    dans les trois familles de couleur. Voir le tableau en tête de
+    module : il manque huit icônes sur quarante-six, toutes nommées,
+    toutes d'une couleur que le masque ne voit pas. On ne bâtit donc
     rien sur le nombre (cf. `a_recu_un_mot_cle`).
     """
-    return bool(icones(image, centre))
+    return bool(icones(image, centre, adverse))
 
 
 def a_recu_un_mot_cle(image, carte) -> bool:
@@ -363,17 +540,33 @@ def a_recu_un_mot_cle(image, carte) -> bool:
     mot-clé dans `card_sets` et une icône s'affiche quand même. Observé
     sur Legion Saboteur (01NX040, `keywords=[]`, une icône bleue).
 
-    ON NE COMPARE PAS LES NOMBRES au-delà de ça. Même depuis que le
-    recollage rend un compte exact là où on connaît la vérité (les cinq
-    Pâle orchestre du 20/11), « 5 icônes pour 1 mot-clé imprimé » ne
-    prouverait pas quatre dons : l'écran ne montre que ce qu'il DESSINE,
-    et rien ne dit qu'un mot-clé imprimé ait toujours son icône.
+    ⚠ CETTE PROMESSE A UN FAUX POSITIF CONNU, ET IL N'EST PAS CORRIGÉ
+    ICI (21/11/2026). La PREMIÈRE place de la barre n'est pas un
+    mot-clé : c'est l'indicateur de NIVEAU (fait de jeu d'Ewan), et la
+    deuxième place des Viktor est un « effet de zone » que la base
+    nomme elle-même `AuraVisualFakeKeyword` (48 cartes, plus
+    `LandmarkVisualOnly` sur 133 autres). L'unique icône de Legion
+    Saboteur — l'exemple qui a justifié cette fonction — est justement
+    un éclair cyan de ce genre. La segmentation les COMPTE, à dessein :
+    ils occupent bien une place dans la barre. Les EXCLURE demande de
+    les reconnaître, donc un gabarit par forme, et c'est la tâche qui
+    récolte les gabarits qui s'en chargera. Aucun appelant aujourd'hui.
+
+    ON NE COMPARE PAS LES NOMBRES au-delà de ça. Même là où le compte
+    est exact (les cinq Pâle orchestre du 20/11), « 5 icônes pour 1
+    mot-clé imprimé » ne prouverait pas quatre dons : l'écran ne montre
+    que ce qu'il DESSINE, et rien ne dit qu'un mot-clé imprimé ait
+    toujours son icône.
     """
     imprimes = tuple(getattr(carte, "keywords", ()) or ())
     refs = tuple(getattr(carte, "keyword_refs", ()) or ())
     if imprimes or refs:
         return False
-    return porte_des_mots_cles(image, carte.center)
+    # LE CÔTÉ VIENT DE LA CARTE, pas d'un argument de plus : `BoardCard`
+    # le porte (`local`), et une carte sans ce champ est à nous — c'est
+    # le comportement d'avant le 21/11/2026.
+    return porte_des_mots_cles(image, carte.center,
+                               adverse=not getattr(carte, "local", True))
 
 
 def cartes_renforcees(image, cartes: Iterable) -> set:
@@ -491,9 +684,12 @@ def _score(glyphe, gabarit) -> float:
     return digits._iou(digits._equalize_stroke(forme, float(cible.mean())), cible)
 
 
-def identifier(image, centre: tuple) -> tuple:
+def identifier(image, centre: tuple, adverse: bool = False) -> tuple:
     """
     Les mots-clés SÛREMENT lus sous cette unité, dans l'ordre de lecture.
+
+    `adverse=True` pour une unité de l'ADVERSAIRE : sa barre est en haut
+    de la carte (21/11/2026).
 
     Un glyphe sous les paliers n'est PAS identifié : il est absent du
     tuple. Il reste compté par `porte_des_mots_cles`, qui ne prétend
@@ -520,7 +716,7 @@ def identifier(image, centre: tuple) -> tuple:
                 "marge veuille dire quelque chose.", len(gabarits),
             )
         return ()
-    boites, masque = _icones_et_masque(image, centre)
+    boites, masque = _icones_et_masque(image, centre, adverse)
     if masque is None:
         return ()
     trouves = []
@@ -560,7 +756,10 @@ qu'un humain a nommé.\
 
 def unites_de_la_trame(trame: dict, window=None) -> list:
     """
-    Les cartes d'une trame `/positional-rectangles` : [(CardCode, centre)].
+    Les cartes d'une trame : [(CardCode, centre, à nous ?)].
+
+    LE CÔTÉ EST DANS LA TRAME (`LocalPlayer`) : on ne le devine pas, et
+    il décide de quel côté de la carte on va lire la barre.
 
     ON NE REFAIT PAS LE CLASSEMENT EN ZONES ICI. `game_state.group_by_zone`
     en est la source unique, et l'importer d'ici importerait une SECONDE
@@ -579,17 +778,19 @@ def unites_de_la_trame(trame: dict, window=None) -> list:
     for rect in (trame or {}).get("Rectangles") or ():
         if rect.get("CardCode") in (None, "face"):
             continue
-        unites.append((rect["CardCode"], lor_api.rect_center_screen(rect, window)))
+        unites.append((rect["CardCode"], lor_api.rect_center_screen(rect, window),
+                       bool(rect.get("LocalPlayer", True))))
     return unites
 
 
 def _rapport(image, unites) -> None:
     """Ce que l'écran dit de chaque unité — boîtes comprises, parce que
     c'est leur INDEX que `cut-icone` demande."""
-    for code, centre in unites:
-        boites = icones(image, centre)
-        noms = identifier(image, centre)
-        print(f"  {code:<12} centre {str(centre):<14} {len(boites)} icône(s)")
+    for code, centre, local in unites:
+        boites = icones(image, centre, adverse=not local)
+        noms = identifier(image, centre, adverse=not local)
+        cote = "à nous " if local else "ADVERSE"
+        print(f"  {code:<12} {cote} centre {str(centre):<14} {len(boites)} icône(s)")
         for i, (x, y, w, h, aire) in enumerate(boites):
             nom = noms[i] if i < len(noms) and len(noms) == len(boites) else "?"
             print(f"       [{i}] x={x:<4} y={y:<4} {w}×{h} (aire {aire})   {nom}")
@@ -613,12 +814,16 @@ def main(argv=None) -> int:
         print(USAGE)
         return 0
 
+    adverse = bool(argv) and argv[-1] == "adverse"
+    if adverse:
+        argv = argv[:-1]
+
     if argv and argv[0] == "cut-icone":
         if len(argv) != 6:
             print(USAGE)
             return 1
         capture, x, y, index, nom = argv[1], *argv[2:6]
-        print(cut_icone(capture, (int(x), int(y)), int(index), nom))
+        print(cut_icone(capture, (int(x), int(y)), int(index), nom, adverse))
         return 0
 
     if argv:
@@ -627,7 +832,7 @@ def main(argv=None) -> int:
             print(f"Capture illisible : {argv[0]}")
             return 1
         if len(argv) >= 3:
-            unites = [("(donné)", (int(argv[1]), int(argv[2])))]
+            unites = [("(donné)", (int(argv[1]), int(argv[2])), not adverse)]
         else:
             # LA TRAME APPARIÉE, OU RIEN. Deviner où sont les unités sur
             # une capture, c'est exactement ce que ce module refuse de
