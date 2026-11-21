@@ -1,0 +1,146 @@
+{
+ "PlayerName": "WiseWolveHolo",
+ "OpponentName": "card_01IO009_Name",
+ "GameState": "InProgress",
+ "Screen": {
+  "ScreenWidth": 1920,
+  "ScreenHeight": 1080
+ },
+ "Rectangles": [
+  {
+   "CardID": 1974926728,
+   "CardCode": "face",
+   "TopLeftX": 179,
+   "TopLeftY": 481,
+   "Width": 117,
+   "Height": 117,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1643118151,
+   "CardCode": "face",
+   "TopLeftX": 179,
+   "TopLeftY": 716,
+   "Width": 117,
+   "Height": 117,
+   "LocalPlayer": false
+  },
+  {
+   "CardID": 388530903,
+   "CardCode": "01PZ052",
+   "TopLeftX": 619,
+   "TopLeftY": 84,
+   "Width": 176,
+   "Height": 246,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1301943516,
+   "CardCode": "01PZ054",
+   "TopLeftX": 787,
+   "TopLeftY": 86,
+   "Width": 176,
+   "Height": 247,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1815163614,
+   "CardCode": "01PZ054",
+   "TopLeftX": 974,
+   "TopLeftY": 260,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 224882486,
+   "CardCode": "01PZ016",
+   "TopLeftX": 837,
+   "TopLeftY": 598,
+   "Width": 115,
+   "Height": 115,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 199152276,
+   "CardCode": "01IO009",
+   "TopLeftX": 896,
+   "TopLeftY": 980,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": false
+  },
+  {
+   "CardID": 1531561207,
+   "CardCode": "99PZ115",
+   "TopLeftX": 739,
+   "TopLeftY": 980,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": false
+  },
+  {
+   "CardID": 517053369,
+   "CardCode": "99PZ115",
+   "TopLeftX": 817,
+   "TopLeftY": 260,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 464811230,
+   "CardCode": "01PZ056",
+   "TopLeftX": 955,
+   "TopLeftY": 84,
+   "Width": 177,
+   "Height": 248,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 364319045,
+   "CardCode": "06RU002",
+   "TopLeftX": 1126,
+   "TopLeftY": 78,
+   "Width": 178,
+   "Height": 249,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1745118539,
+   "CardCode": "01IO017",
+   "TopLeftX": 1052,
+   "TopLeftY": 980,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": false
+  },
+  {
+   "CardID": 1438702283,
+   "CardCode": "01PZ016",
+   "TopLeftX": 543,
+   "TopLeftY": 730,
+   "Width": 256,
+   "Height": 373,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 264062758,
+   "CardCode": "01FR036",
+   "TopLeftX": 831,
+   "TopLeftY": 730,
+   "Width": 256,
+   "Height": 373,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 142458996,
+   "CardCode": "06NX015",
+   "TopLeftX": 1119,
+   "TopLeftY": 730,
+   "Width": 256,
+   "Height": 373,
+   "LocalPlayer": true
+  }
+ ]
+}

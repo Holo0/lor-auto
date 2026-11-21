@@ -3978,6 +3978,203 @@ partie. Tests : `test_mots_cles_ecran.py` (328 assertions), dont
 `test_un_mot_cle_modelise_ne_devient_pas_muet`,
 `test_la_planche_montre_chaque_gabarit`.
 
+## La session du 21/11 — LES MOTS-CLÉS ACCORDÉS TOURNENT ENFIN
+
+55 min (19:10:27 → 20:05:45), lancée sans `check.py`. Log :
+`logs/challenges_20261121_191027.log`. **6 tentatives : 4 VICTOIRES, 1
+défaite, 1 inachevée, 1 entrée manquée. 13 combats, 13 verdicts** —
+septième session d'affilée sans un seul `gagne: null`. Paliers **53 →
+57**, lus 6 fois sur 6. **Meilleure série du projet** : 4 victoires
+d'affilée, contre 3 le 15/11.
+
+### LA DETTE QUI PRIMAIT EST PAYÉE — `keywords.has()` reçoit des faits
+
+- **21 LECTURES, 7 MOTS-CLÉS, SUR DES UNITÉS DE VRAIE PARTIE.** Le
+  chantier des 20-21/11 n'avait jamais été exercé ailleurs que sur
+  quatre captures posées. La répartition est exactement celle qui
+  PROUVE quelque chose :
+
+      contrôles positifs (l'écran retrouve ce que card_sets dit déjà)
+          Ephemeral, Augment, Fury, Overwhelm, Elusive — 5 cartes
+
+      ACCORDÉS en jeu, invisibles jusqu'ici
+          Twisted Catalyzer  ×5  Ephemeral   -> dies_anyway, tout l'échange
+          The Stagehand      ×2  Challenger  -> légalité d'un blocage
+          Jack, the Winner       Overwhelm   -> l'excédent d'une attaque
+          Boomcrew Rookie        Impact, SpellShield
+          Citrus Courier         QuickStrike
+          Navori Bladescout      Elusive
+          Jhin                   QuickStrike, Impact
+
+  Les contrôles positifs ne sont pas de la décoration : ils sont la
+  seule façon de montrer que la lecture ne dit pas n'importe quoi,
+  puisqu'un mot-clé ACCORDÉ ne se vérifie dans aucune base — par
+  définition.
+- **LA BARRE ADVERSE SE LIT, ET C'EST MESURÉ SUR UNE PARTIE.** Le
+  correctif du 21/11 (« côté adverse, la barre est en HAUT de la
+  carte ») couvrait la moitié aveugle du plateau — celle où Provocateur,
+  Insaisissable et Redoutable décident d'un blocage. Sur la capture
+  gardée :
+
+      01IO009  ADVERSE  centre (959, 180)   2 icônes -> Impact, ?
+      01IO017  ADVERSE  centre (1115, 180)  1 icône  -> Elusive
+
+- **« JAMAIS UNE VALEUR APPROCHÉE » TIENT SUR UN VRAI PLATEAU.** Sur
+  ~23 glyphes segmentés, 3 nommés, **tous les autres rendus `?`** —
+  zéro nom inventé, comme sur les captures d'étalonnage.
+- Capture appariée à sa trame d'API, versionnée :
+  `captures_reference/mots_cles/partie_reelle_20261121_192908.png`
+  (+ `.json`). C'est la première du genre : toutes les autres venaient
+  de scènes posées.
+
+### LA BARRE EST LUE SUR LES CARTES D'UNE FENÊTRE DE CHOIX
+
+- **TROIS CARTES À `y≈536` FAISAIENT 256×373**, c'est-à-dire la
+  signature d'une fenêtre de choix (le projet note 257×374 pour celle de
+  Yoink!), là où une unité de plateau fait **127×160** et une carte en
+  main 176×247. `lire_les_mots_cles` y segmente la bande `dy +38..+82`,
+  qui sur une carte deux fois plus grande tombe en plein dans
+  l'illustration : **13 glyphes de décor** présentés aux 23 gabarits.
+- **AUCUN N'A ÉTÉ NOMMÉ** — le double plancher a tenu — mais c'est 13
+  occasions de le franchir, et ~30 ms par lecture pour rien. Le garde
+  qui manque est une BORNE DE TAILLE, pas un seuil de plus. Mesuré sur
+  `partie_reelle_20261121_192908.json`. **NON FAIT.**
+
+### LES ÉTOURDIES NE SONT LUES QU'AVANT UN BLOCAGE
+
+- **UNE UNITÉ ÉTOURDIE A ÉTÉ ENVOYÉE ATTAQUER, ET LE JEU A REFUSÉ DEUX
+  FOIS.** Mesuré, deux témoins indépendants — la lecture d'écran ET le
+  refus du client :
+
+      19:52:17  Étourdie(s) lue(s) à l'écran : Yordle Captain
+      19:52:47  Attaquants : Lissandra, Ezreal, Yordle Captain(5/5), Yuumi
+      19:52:58  Yordle Captain n'a pas quitté le banc, nouvelle saisie (2/2)
+      19:53:02  n'a pas quitté le banc après 2 tentative(s)
+      19:53:05  Confirmation de l'attaque avec 3 unité(s)
+
+  **15 s perdues et une unité manquante**, pour un geste que l'état lu
+  interdisait 30 s plus tôt.
+- **LE MÉCANISME EXISTE, PERSONNE NE LE REMPLIT AU BON MOMENT.**
+  `BoardCard.can_attack` fait bien `not (self.stunned or …)`, et
+  `attackers_available` le consulte. Mais `lire_les_etourdies` n'a
+  qu'**UN SEUL appelant**, `actions.py:4993`, et `game_state.py:408` le
+  documente lui-même : « Rempli par `actions.lire_les_etourdies` **avant
+  un blocage** ». Au moment de choisir les attaquants, personne n'a
+  regardé l'écran — et `stunned = False` veut dire « on n'a pas
+  regardé », pas « elle n'est pas étourdie ». `actions.py:3078` l'écrit
+  déjà.
+- **CONFIRMÉ UNE SECONDE FOIS, À 12 S D'INTERVALLE** : « 20:03:04
+  Étourdie(s) lue(s) : Loping Telescope, Nilah » (avant un blocage) puis
+  « 20:03:16 Plan d'attaque » sans aucune relecture. Second cas d'attaque
+  refusée dans la session : Ziggs, 19:46:53.
+- **LE REMÈDE N'EST PAS DE RECOPIER L'APPEL** — ce serait la deuxième
+  implémentation que le projet dénonce partout. C'est le MOMENT de la
+  lecture qui est trop étroit. **NON FAIT.**
+
+### LA FLÈCHE RETOUR A COÛTÉ LA TENTATIVE, ET LA SESSION
+
+- **LA DETTE N°5 A ENFIN SON PRIX.** Elle était connue depuis le 08/11
+  (« les gabarits de nœud matchent la flèche retour à 0.81-0.83 ») et
+  n'avait jamais rien coûté de mesurable. L'enchaînement de 20:05 :
+
+      20:05:24  nœud (1316, 712) cliqué sans « Voyage » : écarté
+      20:05:28  Nœuds candidats : normal_node1.png 0.83 en (99, 43)
+      20:05:28  Médaillon du joueur non trouvé — repli « le plus proche »
+      20:05:28  nœud 2 : clic en (99, 43)          <- LA FLÈCHE RETOUR
+      20:05:40  « Voyage » non détecté : écarté
+      20:05:40  tentative 6 : inachevée — deuxième nœud introuvable
+      20:05:42  « Relevez-vous » à l'écran (1.00) : non pris
+      20:05:45  Arrêt : impossible de revenir à un écran connu
+
+  **(99, 43) est le coin haut-gauche** : aucun nœud d'aventure n'y est
+  jamais. Et la cascade a emporté la session entière — une nouvelle
+  chance (« Relevez-vous » à **1.00**) était offerte et non prise, parce
+  que `back_to_known_screen` ne clique jamais `retry` (règle juste : il
+  relancerait un combat).
+- **LE REPLI A AGGRAVÉ, IL N'A PAS CAUSÉ** : le médaillon manquait sur
+  cette capture, donc on est tombé sur « le plus proche », qui n'a
+  aucune raison d'écarter un coin d'écran. Capture gardée :
+  `screenshots/sans_voyage_20261121_200540.png`.
+
+### Trois mesures qui corrigent des chiffres écrits ici
+
+- **LE MÉDAILLON DU JOUEUR TIENT, AVEC MOINS DE MARGE QU'ANNONCÉ** :
+  **10 trouvés / 2 absents (83 %)** sur la session, scores **0.74 à
+  0.86**, échelle constante 0.675, position très stable (959-960,
+  440-453). Le projet annonce un plancher de vrais positifs à **0.775**
+  mesuré sur 285 captures ; **en partie il descend à 0.74**, soit 0.04
+  au-dessus du seuil. Le repli « centre de l'écran » a pris le relais
+  correctement les deux fois.
+- **LE COUP D'ŒIL DU BILAN NE GAGNE PAS 9 s QUAND L'ÉCRAN TARDE.**
+  `_victoire_deja_lue` est bien branché (`lor_battle.py:452`) et il a
+  regardé — mais `COUP_D_OEIL_BILAN = 0.0` ne lit qu'**UNE image**, et
+  l'écran de victoire arrive 10 s après le second « Continuer » :
+
+      19:23:50  Recherche du bouton : retry
+      19:23:59  'retry' introuvable            <- 8,74 s, reperdues
+      19:24:00  Bilan lu à l'écran : victoire  <- 1,24 s
+
+  Les « ≈ 9,1 s gagnées par boss final gagné » du 10/11 ne valent donc
+  que si l'écran est déjà dessiné. Même leçon que le 05/11 : **les deux
+  écrans n'arrivent pas au même instant.**
+- **LE GARDE DE GRILLE COÛTE 4 s, PAS 1,3 s, ET IL EST PRESQUE
+  SYSTÉMATIQUE** : déclenché à **4 enchaînements sur 5**, et de son
+  WARNING au palier lu il s'écoule 3,97 / 4,17 / 3,99 s. Le projet écrit
+  « ~1,3 s le jour où c'est vraiment le mauvais écran ». À côté, le vrai
+  poste reste le parcours de la grille : **~30 s** entre le palier lu et
+  le clic sur `use_attempt`.
+
+### Ce que la session a validé sans y toucher
+
+- **LES CINQ JUGES DE VERDICT ONT TOUS TOURNÉ** le même jour :
+  récompense de combat (`_reward_proves_victory`, 06/11), écran de
+  victoire, bilan au cœur (45 PV lus), aventure poursuivie
+  (`confirm_victory`), et « Relevez-vous ».
+- **`_carnet` (09/11) VU TOURNER** — correctif jamais observé jusqu'ici :
+  au palier 57 aucun 7 ★ n'était disponible (épuisés), et en 8 s le bot
+  est revenu « sur la meilleure vue en chemin — 6 étoile(s) » au lieu de
+  retomber sur `first_champion`, c'est-à-dire sur le PIRE champion de la
+  grille.
+- **`champions.sur_la_grille` (09/11)** a refusé 4 fois de défiler une
+  liste de défis, en ~1,3 s chaque fois.
+- **LA TABLE D'ALLOCATION SE VALIDE, sur un point de donnée** :
+  `journal.py --champions` donne **53/54/55/56 à 6 ★ → 100 %** (1/1
+  chacun) et **57 à 6 ★ → 0 %** (0/2), là où `etoiles_requises(57)`
+  demande 7 ★. Les quatre paliers joués à la cible sont gagnés, le seul
+  joué en dessous est perdu. Un point, pas une preuve.
+- **LE BACKLOG DE LA SESSION EST VIDE** : `journal.py --ecartees` ne rend
+  AUCUN motif. Les 6 échecs de pose et les 7 mises de côté étaient des
+  gestes ratés, pas des refus de décision. **Nautilus en concentre 4 à
+  elle seule** — à surveiller.
+- **CE QUE ÇA N'A PAS COÛTÉ** : 2 blocages de pile seulement (51 s et
+  53 s en ATTACKING, tous deux rattrapés par l'annulation), 2 « mana
+  illisible » sur 55 min (conduite correcte : « on s'arrête plutôt que de
+  jouer à l'aveugle »), zéro palier illisible, zéro carte bannie.
+
+### UNE MESURE QUI NE MESURAIT PAS CE QU'ELLE CROYAIT
+
+- Première annonce de la session : « 12 DEFEND_TURN / 0 ATTACK_TURN » au
+  premier combat, donc une panne de `find_attack_token`. **C'était
+  faux** : le comptage portait sur des OCCURRENCES DE CHAÎNE dans le
+  log, et `ATTACK_TURN` n'y est pas journalisée sous cette forme. Le
+  vrai tableau, pris sur les compteurs du bot :
+
+      #   durée  tours  attaq  plans  confirm  sans jeton
+      1    199s      6      0      0        0           3
+      2    453s      8      3      4        3           0
+      3    115s      2      0      0        0           0
+      4    129s      2      0      0        0           0
+
+  3 refus de jeton sur 6 tours, c'est l'alternance NORMALE ; les combats
+  3 et 4 finissent en 2 tours à la brûlure (deux Mystic Shot au nexus)
+  sans que la question se pose. **La dette n°7 reste ouverte et cette
+  session ne l'illustre pas.** Mesure de contrôle prise pendant un
+  combat : score 0.266-0.268 pour un seuil de 0.55 — identique au
+  `jeton=non (score 0.27 x0.85)` que le bot journalise lui-même au même
+  instant, donc le guet lisait bien la même chose. C'est le défaut que
+  le projet dénonce ailleurs : **un nombre écrit comme mesuré qui ne
+  mesure pas ce qu'on croit.**
+
 ## Journal des sessions
 
 Une ligne par session jouée, pour remplacer les bilans « ce qui a tourné »
@@ -3997,6 +4194,7 @@ ce tableau ne sert qu'à situer une date et à voir la tendance.
 | 15/11 | 3 V sur 3 (39 → 42) | 4 / 4 | le Joker compris ; 0 et 3 relus dans un vrai titre |
 | 16/11 | 2 V sur 2 (43 → 45) | 3 / 3 | la boutique quittée avec 840 PO |
 | 20/11 | 5 : 1 V, 1 D, 3 inach. (46 → 47) | 3 / 3 | cinq correctifs vus tourner ; le boss final qu'on ne sait pas relancer |
+| 21/11 | 6 : **4 V**, 1 D, 1 inach. (53 → 57) | 13 / 13 | **les mots-clés accordés tournent** ; les étourdies ne sont lues qu'avant un blocage |
 
 ## Ce qui reste ouvert — liste UNIQUE, refaite le 16/11/2026
 
@@ -4035,10 +4233,19 @@ sans être revérifiés un par un ce soir ; seuls les points marqués
    Patient Beast posée sur The Leviathan, banc NON vide, `orbe=oui`. Cause
    distincte, jamais diagnostiquée. Il laissera désormais une capture
    utilisable.
-5. **Le faux positif du bouton boussole** : les gabarits de nœud matchent
-   le bouton boussole (0.85 en (1819, 470)) et la flèche retour
-   (0.81-0.83). Deuxième occurrence datée le 14/11 — `normal_node` **0.80
-   en (1821, 45)**, clic, « Voyage » introuvable, **13 s**.
+5. **LE FAUX POSITIF DU BOUTON BOUSSOLE ET DE LA FLÈCHE RETOUR — IL A
+   MAINTENANT UN PRIX (21/11)** : les gabarits de nœud matchent le bouton
+   boussole (0.85 en (1819, 470)) et la flèche retour (0.81-0.83).
+   Deuxième occurrence datée le 14/11 — `normal_node` **0.80 en
+   (1821, 45)**, clic, « Voyage » introuvable, **13 s**. **Troisième le
+   21/11, et elle a emporté la session** : `normal_node1` **0.83 en
+   (99, 43)** — le coin haut-gauche, où aucun nœud n'est jamais — puis
+   « deuxième nœud introuvable », tentative inachevée, et arrêt sur
+   « écran inconnu » alors qu'un « Relevez-vous » à **1.00** était
+   offert. Un garde de ZONE (aucun nœud dans les coins, ni sur la
+   colonne de la boussole) coûterait deux lignes ; le relever aurait
+   sauvé la tentative et la fin de session. **C'est devenu le point le
+   plus rentable de la liste après la boutique et le boss final.**
 6. **LE BOSS FINAL QU'ON NE SAIT PAS RELANCER (20/11, 9 min et une
    tentative gagnable)** — c'est l'ancienne « boucle de reprise stérile »
    du 14/11, **diagnostiquée et retournée** : la carte n'est PAS périmée.
@@ -4090,6 +4297,21 @@ sans être revérifiés un par un ce soir ; seuls les points marqués
 15. **Le ménage de `screenshots/`** (0,98 Go, dont 94 % de captures
     produites par les tests avant le bouchon du 09/11).
 
+16. **LES ÉTOURDIES NE SONT LUES QU'AVANT UN BLOCAGE (21/11)** —
+    `lire_les_etourdies` n'a qu'un seul appelant (`actions.py:4993`), et
+    `game_state.py:408` le dit lui-même. `can_attack` consulte pourtant
+    `stunned`. Résultat mesuré : une unité étourdie envoyée attaquer, le
+    jeu refuse DEUX glissers, **15 s et une unité manquante** — deux cas
+    dans la session. Le remède n'est pas de recopier l'appel (deuxième
+    implémentation), c'est d'élargir le MOMENT de la lecture. Petit,
+    mesuré, sans risque.
+17. **`mots_cles_ecran` LIT LA BARRE SUR LES CARTES D'UNE FENÊTRE DE
+    CHOIX (21/11)** — elles font **256×373** contre 127×160 pour une
+    unité de plateau, donc la bande tombe dans l'illustration : 13
+    glyphes de décor présentés à 23 gabarits. Aucun n'a été nommé, mais
+    c'est 13 occasions de franchir le double plancher, et ~30 ms par
+    lecture. Il manque une BORNE DE TAILLE, pas un seuil.
+
 ### Deux faits de jeu en attente d'Ewan
 
 - **Une capture d'un bilan au nexus PLEIN.** C'est la seule image qui
@@ -4131,14 +4353,11 @@ correctif non observé est une hypothèse.
   et « la Destiny Card se choisit sur le plateau ». **Non exercés le
   16/11** : vérifié, zéro Wild Card et zéro blocage de pile dans le log du
   jour, le deck n'en contenait pas.
-- **La lecture des mots-clés ACCORDÉS en jeu** (`mots_cles_ecran.py`,
-  20 et 21/11) : mesurée sur QUATRE captures du dépôt, jamais exercée
-  pendant un combat. Reste à voir si `keywords.has()` reçoit vraiment un
-  Challenger ou un Overwhelm accordé pendant une session jouée.
-  **Et tout ce que le 21/11 y a ajouté est dans le même cas** : la barre
-  ADVERSE lue en haut de la carte (le côté où Provocateur, Insaisissable
-  et Redoutable décident d'un blocage), les quatre familles de couleur,
-  les 23 gabarits, l'exclusion des dessins d'affichage et le plancher de
-  nommage. **La planche n'a pas non plus été montrée à Ewan**, et c'est
-  elle qui dirait qu'aucun gabarit n'est mal étiqueté — un fait que
-  AUCUN test ne peut établir.
+- ~~**La lecture des mots-clés ACCORDÉS en jeu**~~ — **LEVÉE LE
+  21/11 AU SOIR**, voir « La session du 21/11 ». La barre ADVERSE lue en
+  haut de la carte est tombée avec elle. **Reste dans cette liste** : le
+  plancher de nommage et l'exclusion des dessins d'affichage n'ont pas
+  été exercés (aucun `?` nommé, aucune aura rencontrée), et **la planche
+  n'a toujours pas été montrée à Ewan** — c'est elle, et elle seule, qui
+  dirait qu'aucun gabarit n'est mal étiqueté. Aucun test ne peut
+  l'établir.
