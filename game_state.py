@@ -1420,15 +1420,24 @@ def lire_les_mots_cles(screen, zones: dict) -> int:
         return 0
     enrichies = 0
     for nom in ZONES_DE_PLATEAU:
-        # CHEZ L'ADVERSAIRE, LA BARRE EST EN HAUT DE LA CARTE
-        # (21/11/2026) : statistiques et mots-clés y sont inversés. On
-        # lisait `dy +38..+82` pour tout le monde, donc la zone des
-        # STATISTIQUES en face — le camp où Provocateur, Insaisissable
-        # et Redoutable décident de la légalité et de la survie d'un
-        # blocage était entièrement aveugle. Le côté vient de la ZONE,
-        # pas de la carte : c'est la même source que `ZONES_DE_PLATEAU`.
-        adverse = nom.startswith("enemy")
         for carte in zones.get(nom, ()) or ():
+            # CHEZ L'ADVERSAIRE, LA BARRE EST EN HAUT DE LA CARTE
+            # (21/11/2026) : statistiques et mots-clés y sont inversés.
+            # On lisait `dy +38..+82` pour tout le monde, donc la zone
+            # des STATISTIQUES en face — le camp où Provocateur,
+            # Insaisissable et Redoutable décident de la légalité et de
+            # la survie d'un blocage était entièrement aveugle.
+            #
+            # LE CAMP VIENT DE LA CARTE, PAS DU NOM DE ZONE. Une zone de
+            # plateau est déduite de la HAUTEUR du rectangle
+            # (`classify_zone`), et c'est exactement ce que
+            # `reconcile_combat_rows` corrige depuis des mois : « la
+            # hauteur est une mesure bruitée ; le camp, lui, est donné
+            # par l'API et ne se trompe jamais ». Lire le côté sur le
+            # nom de zone ferait donc chercher la barre à l'envers sur
+            # une unité que sa hauteur a fait tomber dans la mauvaise
+            # bande — et ça ne lèverait rien, ça rendrait zéro mot-clé.
+            adverse = not carte.local
             try:
                 lus = mots_cles_ecran.identifier(screen, carte.center, adverse)
             except Exception as exc:   # une lecture ratée n'arrête pas un combat

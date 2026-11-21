@@ -15,18 +15,28 @@ CE QUE LE JEU DESSINE, ET OÙ
 Sur chaque unité DU PLATEAU, le jeu pose une barre noire hexagonale
 portant une icône par mot-clé — SOUS l'illustration chez nous, AU-DESSUS
 chez l'adversaire (ses statistiques et sa barre sont inversées). Mesuré
-le 21/11/2026 sur les neuf unités porteuses des quatre captures
-témoins, en détectant le bandeau lui-même (la composante sombre,
-V < 70, qui touche la colonne du centre), en coordonnées RELATIVES à
+le 21/11/2026 sur NEUF unités : celles des scènes du 20 et du 21/11
+qui sont de NOTRE côté (les cinq Pâle orchestre, les deux Kennen, les
+deux Viktor). Les trois porteuses du 14/11 en sont absentes parce que
+le repère n'y est pas net — sur Swain et Legion Saboteur la composante
+sombre se prolonge dans l'illustration, comme elle le fait chez
+l'adversaire. Le bandeau se détecte lui-même (la composante sombre,
+V < 70, qui touche la colonne du centre) ; coordonnées RELATIVES à
 `card.center` :
 
-      le bandeau occupe   dy +47 à +88 chez nous, -88 à -48 en face
-      sa demi-largeur     65 px (Pâle orchestre) à 71 px (Kennen)
+      le bandeau occupe   dy +47 à +89 chez nous (enveloppe des neuf) ;
+                          en face, seul son bord HAUT est net : -88 (sa
+                          composante sombre s'y prolonge dans
+                          l'illustration, elle n'a donc pas de bord bas
+                          mesurable)
+      sa demi-largeur     65 px (Pâle orchestre) à 71 px (Kennen, Viktor)
       une icône fait      12 à 34 px de côté, aire ≥ 60 px
 
-La bande LUE est le bandeau entier côté adverse, mais s'arrête à +82
-chez nous : le liseré bleu du plateau monte jusqu'à dy +79 sous nos
-unités et fusionne avec les icônes qu'il touche (voir `BARRE_DY_BAS`).
+La bande LUE descend jusqu'à +82 chez nous : le liseré bleu du plateau
+monte jusqu'à dy +79 sous nos unités et fusionne avec les icônes qu'il
+touche (voir `BARRE_DY_BAS`). Côté adverse, le bord bas de la bande
+n'est PAS déduit d'une symétrie — il est mesuré par balayage, voir
+`BARRE_ADVERSE_DY_BAS`.
 
 AU-DELÀ DE QUATRE MOTS-CLÉS, LE JEU TASSE LES ICÔNES SUR DEUX NIVEAUX
 en quinconce — centres mesurés à dy +59..+62 pour la rangée du haut,
@@ -41,10 +51,13 @@ ci-dessous), nettes et franches sur fond noir.
 CE QUI EST MESURÉ, ET CE QUI NE L'EST PAS
 -----------------------------------------
 Quatre scènes, dont trois étiquetées par Ewan. Les comptes ci-dessous
-sont ceux du 21/11/2026 ; la colonne « icônes » est le nombre d'icônes
-VISIBLES sur la capture, celle de droite ce que le module en lit.
+sont ceux du 21/11/2026 (recomptés le même jour, voir plus bas) ; la
+colonne « icônes » est le nombre d'icônes VISIBLES sur la capture,
+« boîtes » ce que `icones()` rend. **Une ligne « ×N » vaut N vignettes,
+et les deux colonnes y sont données PAR VIGNETTE** — c'est le piège qui
+a fait écrire un total faux la première fois.
 
-      scène    unité                     imprimés  icônes  lues
+      scène    unité                     imprimés  icônes  boîtes
       14/11    Swain                         1       5      5
       14/11    Enraged Firespitter           1       2      2
       14/11    Legion Saboteur               0       1      1
@@ -55,32 +68,60 @@ VISIBLES sur la capture, celle de droite ce que le module en lit.
       20/11    Pâle orchestre ×5             2       4      4
       20/11    Vaults of Helia   (adverse)   1       1      1
       20/11    Cursed Keeper     (adverse)   2       2      1
-      21/11    Kennen                        1       6      5
-      21/11    Kennen (2e capture)           1       6      5
+      21/11    Kennen (capture kennen)       1       6      5
+      21/11    Kennen (capture victor)       1       6      5 ⚠ dont 1 FAUX
       21/11    Viktor gauche                 1       7      5
       21/11    Viktor droite                 1       7      4
       21/11    Powder Keg ×2     (adverse)   2       3      2
       21/11    Jagged Butcher    (adverse)   1       0      0
 
-**LA PRÉSENCE RESTE LA PROMESSE PRINCIPALE, ET ELLE EST INTACTE** : les
-sept unités sans barre (dont quatre adverses) rendent zéro, et les onze
-qui en ont une rendent au moins une icône. Zéro faux positif, zéro faux
-négatif sur la PRÉSENCE.
+      TOTAL, lignes ×N développées :
+          21 unités de plateau (16 porteuses, 5 vierges dont 4 adverses)
+          63 icônes visibles — 53 boîtes, dont 1 FAUSSE — 52 vraies
+          → 11 icônes n'ont pas de boîte à elles
 
-**LE COMPTE EST EXACT PARTOUT OÙ LES ICÔNES TIENNENT DANS LES TROIS
-FAMILLES DE COULEUR, et nulle part ailleurs.** Les huit icônes
-manquantes du tableau se nomment, et c'est toujours la même cause — le
-masque ne les voit pas :
-  - le CERCLE ROUGE de Régénération (Kennen, Viktor droite) sort aux
-    teintes 2 à 11, quand `ORANGE` commence à 8 : 55 px sur 202 passent,
-    et il ne reste qu'un ruban de 19×8 ;
-  - la CROIX BLANCHE d'Immobile (Powder Keg) et le BOUCLIER BLANC de
-    « Can't Block » (Cursed Keeper) ont une saturation médiane de 17 :
-    aucune famille ne les couvre ;
-  - la TOUR DORÉE de Robuste (les deux Viktor) touche le liseré doré du
-    cadre de la carte et forme avec lui une composante de 94×11 ;
-  - la FLAMME BLEUE de Volonté (Viktor gauche) fait 10 px de large,
-    sous `ICONE_COTE_MIN`, et se fait absorber par sa voisine.
+**LA PRÉSENCE RESTE LA PROMESSE PRINCIPALE, ET ELLE EST INTACTE** : les
+5 unités sans barre (dont 4 adverses) rendent zéro, et les 16 qui en ont
+une rendent au moins une icône. Zéro faux positif, zéro faux négatif sur
+la PRÉSENCE.
+
+**LE COMPTE, LUI, N'EST PAS EXACT, ET PAS SEULEMENT PAR DÉFAUT.** La
+première version de ce tableau annonçait « huit icônes manquantes sur
+quarante-six » ; les deux nombres étaient faux (les lignes « ×N »
+n'avaient pas été développées) et la colonne « lues » confondait « une
+boîte est sortie » avec « la bonne icône a été vue ». Le relevé exact,
+boîte par boîte :
+
+  LES 11 ICÔNES SANS BOÎTE, par capture — les causes de MASQUE d'abord :
+  - Kennen (capture kennen), 1 : le CERCLE ROUGE (lexique : Régénération)
+    sort aux teintes 2 à 11 quand `ORANGE` commence à 8 — 55 px sur 202
+    passent, il ne reste qu'un ruban de 19×8, refusé par la hauteur ;
+  - Kennen (capture victor), 2 : le MÊME cercle rouge (ruban 19×8), plus
+    l'icône de NIVEAU, dont le masque ne laisse ici qu'un 19×11 —
+    **1 px sous `ICONE_COTE_MIN`**, alors que sur l'autre capture la
+    même icône sort en 28×25. Deux captures de la même carte, deux
+    résultats : c'est ce qui interdit de récolter un gabarit à l'INDEX
+    (voir `cut_icone`) ;
+  - Powder Keg ×2, 1 chacune : la CROIX BLANCHE d'Immobile, saturation
+    médiane 17 — aucune des trois familles ne la couvre ;
+  - Cursed Keeper, 1 : le BOUCLIER BLANC de « Can't Block », même cause ;
+  - Viktor gauche, 2 : la TOUR DORÉE (lexique : position 4, Immortalité —
+    elle avait d'abord été décrite « Robuste », cf. CLAUDE.md, « la
+    vérité terrain est une POSITION, pas une description ») touche le
+    liseré doré du cadre et forme avec lui une composante de 94×11 ; et
+    la FLAMME BLEUE fait 10×13, sous `ICONE_COTE_MIN` ;
+  - Viktor droite, 3 : la tour dorée (idem), un ruban de 17×8 en dx
+    +40..+57 (même symptôme que le cercle rouge de Kennen), et une
+    troisième que la FUSION ci-dessous peut avoir avalée.
+
+  ET QUATRE BOÎTES ATTEIGNENT LES DEUX RANGÉES À LA FOIS — mesuré, et
+  nommées une par une dans `test_les_deux_rangees_dune_barre_tassee_ne_
+  se_confondent_pas` : deux vraies fusions (Viktor), une composante
+  connexe trop haute (Viktor droite) et le halo (Kennen). Une boîte qui
+  couvre deux rangées peut contenir deux icônes : le compte « 11 sans
+  boîte » est donc un MAJORANT du nombre d'icônes vraiment perdues, et
+  un minorant du nombre de boîtes inutilisables pour un gabarit.
+
 Élargir les familles est un changement de MASQUE : il déplacerait aussi
 les quatre gabarits existants, qui sont découpés par ce masque-là. C'est
 la tâche qui récolte les gabarits qui devra le faire, pas celle-ci.
@@ -159,9 +200,9 @@ PIÈGES MESURÉS ET ÉCARTÉS
     bandeau — deux icônes sur quatre du Pâle orchestre.
 
 QUATRE SCÈNES, DÉSORMAIS (mis à jour le 21/11/2026). La géométrie du
-bandeau est mesurée sur les neuf unités porteuses des quatre captures
-témoins, des deux côtés du plateau. L'IDENTIFICATION repose sur la
-scène du 20/11/2026 (cinq Pâle orchestre étiquetés par Ewan) avec
+bandeau est mesurée sur les neuf unités de NOTRE côté, et par balayage
+côté adverse (cf. `BARRE_ADVERSE_DY_BAS`). L'IDENTIFICATION repose sur
+la scène du 20/11/2026 (cinq Pâle orchestre étiquetés par Ewan) avec
 Firespitter (14/11) en validation croisée ; les onze types de glyphes
 nommés par Ewan le 21/11 n'ont AUCUN gabarit et servent de témoins
 NÉGATIFS.
@@ -189,10 +230,16 @@ LOGGER = logging.getLogger(__name__)
 #
 # OÙ EST LE BANDEAU, MESURÉ (21/11/2026). Le rectangle noir se détecte
 # tout seul (la composante sombre, V < 70, qui touche la colonne du
-# centre) : sur les NEUF unités porteuses des quatre captures témoins il
-# occupe **dy +47..+88 de notre côté** et **dy -88..-48 chez
-# l'adversaire** — un vrai miroir, à un pixel près. Sa demi-largeur va
-# de 65 (Pâle orchestre) à 71 px (Kennen, Viktor).
+# centre) : sur les NEUF unités du 20 et du 21/11 qui sont de NOTRE côté
+# (cf. le relevé en tête de module) il occupe **dy +47..+89** —
+# enveloppe des neuf, de +47 (Pâle orchestre) à +89 (Kennen sur la
+# capture `victor`). Sa demi-largeur va de 65 (Pâle orchestre) à 71 px
+# (Kennen, Viktor).
+#
+# CÔTÉ ADVERSE, SEUL LE BORD HAUT EST MESURABLE : **-88**. La composante
+# sombre s'y prolonge dans l'illustration, donc le bandeau n'a pas de
+# bord bas net, et on NE SUPPOSE PAS la symétrie — voir
+# `BARRE_ADVERSE_DY_BAS`, dont la valeur vient d'un balayage.
 #
 # ON NE LIT PAS LE BANDEAU ENTIER DE NOTRE CÔTÉ, ET C'EST MESURÉ. Le
 # liseré bleu du plateau MONTE jusqu'à dy +79 sous nos unités et touche
@@ -204,10 +251,19 @@ LOGGER = logging.getLogger(__name__)
 # inférieure soit rogné (Kennen : épée lue +70..+82 au lieu de +70..+86)
 # — un glyphe rogné reste compté, un glyphe fusionné est perdu.
 #
-# CÔTÉ ADVERSE IL N'Y A PAS DE LISERÉ AU-DESSUS DES CARTES : la bande y
-# couvre donc le bandeau ENTIER, ce qui laisse la place aux deux rangées
-# d'une barre tassée. Vérifié : les trois unités adverses VIERGES du
-# 14/11 restent à zéro icône avec cette bande.
+# CÔTÉ ADVERSE IL N'Y A PAS DE LISERÉ AU-DESSUS DES CARTES, et la bande
+# y est BORNÉE PAR BALAYAGE, pas par symétrie (21/11/2026). Les icônes
+# adverses occupent **dy -82..-56** sur les quatre unités porteuses
+# (Powder Keg ×2, Cursed Keeper, Vaults of Helia). En faisant varier le
+# bord bas px par px, le compte — 2, 2, 1, 1 sur les porteuses et ZÉRO
+# sur les quatre vierges — est **stable de -66 à -41** ; le PREMIER faux
+# positif apparaît à **-40** (Powder Keg passe à 3 : une composante
+# 28×12 à dy -52..-40, sous le bandeau, dans le cadre de la carte).
+# -48 est au milieu de ce plateau de 26 px, à 8 px du premier faux
+# positif. Au-dessus, -70 fait perdre Cursed Keeper et -68 les deux
+# Powder Keg, tandis que le compte tient sans une seule fausse boîte
+# jusqu'à -120 : **-88 a 17 px de marge du bon côté, et aucune du
+# mauvais, parce qu'il n'y en a pas à avoir.**
 BARRE_DY_HAUT = 47
 BARRE_DY_BAS = 82
 BARRE_ADVERSE_DY_HAUT = 88      # distance AU-DESSUS du centre
@@ -494,6 +550,36 @@ def cut_icone(capture: str, centre: tuple, index: int, nom: str,
     depuis le 14/11, et il avait raison. L'ordre vient d'Ewan, pas de
     l'image.
 
+    ⚠⚠ L'INDEX N'EST PAS UNE POSITION DANS LA BARRE, ET SUR LES DEUX
+    CAPTURES DU 21/11 IL NE DÉSIGNE PAS LA MÊME ICÔNE (mesuré le
+    21/11/2026). Le lexique d'Ewan nomme les icônes PAR POSITION
+    (« Kennen n°1 = niveau, n°2 = Frappe rapide… ») ; `cut-icone`, lui,
+    prend le rang de la boîte dans ce que la segmentation a RENDU. Les
+    deux ne coïncident que si toutes les icônes sortent, et elles ne
+    sortent pas. Le MÊME Kennen, sur les deux captures du 21/11 :
+
+        kennen_20261121_034644  dx  -62  -33  -20   +2  +37
+        victor_20261121_035752  dx       -32  -19   +3  +38  +65
+
+    (`dx` = le `x` qu'imprime le rapport MOINS `BARRE_DEMI_LARGEUR`,
+    c'est-à-dire la position relative au centre de la carte.)
+    Les quatre communes s'alignent à 1 px près — c'est bien la même
+    barre, au même endroit. Mais l'index 0 vaut **dx -62** sur la
+    première capture et **dx -32** sur la seconde, et la seconde liste
+    se termine par un **+65 (15×20, teinte 104) qui est le HALO BLEU du
+    plateau, pas une icône** : il déborde la demi-largeur du bandeau
+    (71 px sous Kennen) que `BARRE_DEMI_LARGEUR` = 80 laisse entrer.
+    Récolter à l'index sur ces captures-là graverait donc un gabarit
+    FAUX — c'est le piège de `cut_defi` (08/11) par un autre chemin, et
+    il est pire ici, parce que rien ne rougirait : une icône mal nommée
+    se reconnaîtrait elle-même.
+
+    CE QU'IL FAUT FAIRE À LA PLACE : lire d'abord le rapport
+    (`python mots_cles_ecran.py <capture.png>`), qui imprime le `x` de
+    CHAQUE boîte, apparier ces `x` à la position nommée par Ewan, et ne
+    récolter que les index ainsi confirmés — en vérifiant sur les DEUX
+    captures quand la carte y figure deux fois.
+
     Le masque écrit est celui que `identifier` relira : on découpe PAR LE
     CHEMIN DE LECTURE, jamais par un seuil choisi à part. Le piège est
     documenté (`cut_defi`, 08/11) — une police découpée autrement ne se
@@ -519,15 +605,16 @@ def porte_des_mots_cles(image, centre: tuple, adverse: bool = False) -> bool:
     Cette unité affiche-t-elle AU MOINS un mot-clé ?
 
     C'EST LE VERDICT LE MOINS CHER ET LE MIEUX ÉTABLI : juste sur les
-    dix-huit unités de plateau des quatre captures témoins — onze
-    porteuses, sept vierges dont quatre ADVERSES — et il ne demande
+    VINGT ET UNE unités de plateau des quatre captures témoins — seize
+    porteuses, cinq vierges dont quatre ADVERSES — et il ne demande
     aucun gabarit.
 
-    Le COMPTE, lui, n'est exact que là où toutes les icônes tiennent
-    dans les trois familles de couleur. Voir le tableau en tête de
-    module : il manque huit icônes sur quarante-six, toutes nommées,
-    toutes d'une couleur que le masque ne voit pas. On ne bâtit donc
-    rien sur le nombre (cf. `a_recu_un_mot_cle`).
+    Le COMPTE, lui, n'est pas exact. Voir le tableau en tête de module,
+    recompté le 21/11/2026 : sur 63 icônes visibles, 53 boîtes sortent,
+    dont UNE FAUSSE (le halo bleu du plateau sous Kennen, capture
+    `victor`) — donc 11 icônes n'ont pas de boîte à elles. On ne bâtit
+    donc rien sur le nombre (cf. `a_recu_un_mot_cle`), et surtout pas la
+    récolte d'un gabarit (cf. `cut_icone`).
     """
     return bool(icones(image, centre, adverse))
 
@@ -748,9 +835,18 @@ Que lit-on sous les unités d'un plateau ?
     python mots_cles_ecran.py <capture.png> <x> <y> un centre d'unité donné à la main
     python mots_cles_ecran.py cut-icone <capture.png> <x> <y> <index> <nom>
 
+Ajouter `adverse` EN DERNIER ARGUMENT lit la barre en HAUT de la carte
+— c'est là qu'elle est chez l'adversaire. Inutile avec une trame
+appariée : le côté y est lu dans `LocalPlayer`.
+
+    python mots_cles_ecran.py <capture.png> <x> <y> adverse
+    python mots_cles_ecran.py cut-icone <capture.png> <x> <y> <index> <nom> adverse
+
 `cut-icone` récolte un gabarit : l'INDEX est celui qu'affiche la
 commande sans argument, le NOM est celui d'Ewan — on ne récolte que ce
-qu'un humain a nommé.\
+qu'un humain a nommé. ⚠ L'index n'est PAS la position dans la barre et
+ne désigne pas la même icône d'une capture à l'autre : lire
+l'avertissement de `cut_icone` AVANT de récolter.\
 """
 
 

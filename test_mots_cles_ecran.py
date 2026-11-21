@@ -277,9 +277,18 @@ def test_un_glyphe_fragmente_se_recolle_entier():
     if img14 is None:
         check("capture de référence présente", False, CAPTURE)
         return
-    # Firespitter colle à une grande tache de bordure (40×30 à 92,0) :
-    # celle-ci dépasse DÉJÀ la taille d'un glyphe, donc elle est écartée
-    # avant l'agglomération et ne peut plus servir de pont (21/11/2026).
+    # Firespitter colle à une tache de bordure, et CE N'EST PAS LA TAILLE
+    # QUI L'ÉCARTE (remesuré le 21/11/2026). La description « 40×30 à
+    # 92,0, donc écartée AVANT l'agglomération » datait de l'ancienne
+    # bande `+38..+82` ; dans la bande actuelle `+47..+82` la tache fait
+    # **25×21 à x=107**, ce qui est une taille de glyphe parfaitement
+    # plausible. Et rien n'est écarté avant l'agglomération :
+    # `_icones_et_masque` le dit en majuscules (« ON NE FILTRE PAS LES
+    # FRAGMENTS TROP GRANDS ICI »). Ce qui l'écarte, c'est le garde du
+    # bandeau : la médiane de son anneau vaut **111** pour un plancher à
+    # `FOND_SOMBRE_MAX` = 70, quand les deux vraies icônes sont à 31 et
+    # 28. Elle ne peut pas non plus servir de pont, parce que
+    # l'agglomération refuse toute union plus grande qu'un glyphe.
     #
     # ON ASSERTE LA PROPRIÉTÉ, PAS LE TUPLE (20/11/2026, revue finale).
     # Ce test gravait `[(84, 20, 22, 20, 204)]` : l'origine exacte et
@@ -305,10 +314,14 @@ def test_un_glyphe_fragmente_se_recolle_entier():
         x, y, w, h, aire = boite
         check(f"   [{index}] a une taille de glyphe",
               mce._est_un_glyphe(w, h, aire), boite)
-        # La tache de bordure fait 40×30 : aucune boîte ne doit l'avoir
-        # avalée.
-        check(f"   [{index}] n'a pas avalé la tache de bordure (40×30)",
-              w <= mce.ICONE_COTE_MAX and h <= mce.ICONE_COTE_MAX, boite)
+        # ET ON VÉRIFIE QU'ELLE N'A PAS MANGÉ LA TACHE, PAS QU'ELLE A
+        # UNE TAILLE LÉGALE. L'assertion d'avant relisait
+        # `w <= ICONE_COTE_MAX and h <= ICONE_COTE_MAX`, que
+        # `_est_un_glyphe` vient d'imposer trois lignes plus haut :
+        # elle ne pouvait pas rougir. La tache occupe x=107..132 ;
+        # une boîte qui l'aurait avalée déborderait dedans.
+        check(f"   [{index}] ne deborde pas sur la tache de bordure (x >= 107)",
+              x + w <= 107, boite)
 
     # SWAIN EN PORTE CINQ, comptées sur la capture : bouclier orange,
     # face grimaçante orange, éclair cyan, arcs cyan, aile cyan.
@@ -461,16 +474,43 @@ def test_le_decoupage_suit_le_chemin_de_lecture():
 # ============================================================
 # Les deux défauts du 21/11/2026
 # ============================================================
-# MILIEU DU BANDEAU. Mesuré sur les neuf unités porteuses des quatre
-# captures : le bandeau noir occupe dy +47..+88 de notre côté. Son
-# milieu, +68, sépare les deux niveaux d'une barre tassée — centres
-# mesurés +59 à +62 en haut, +74 à +78 en bas.
+# MILIEU DU BANDEAU. Mesuré sur les neuf unités du 20 et du 21/11 qui
+# sont de NOTRE côté (cinq Pâle orchestre, deux Kennen, deux Viktor) : le
+# bandeau noir y occupe dy +47..+89. Son milieu, +68, sépare les deux
+# niveaux d'une barre tassée — centres mesurés +59 à +62 en haut, +74 à
+# +78 en bas.
 MILIEU_BANDEAU = 68
+
+# LES DEUX RANGÉES, EN DY RELATIF À `card.center`. Ce sont les plages où
+# tombe le CENTRE d'une boîte qui n'appartient qu'à une rangée (relevé en
+# tête de `mots_cles_ecran`). Elles servent ci-dessous à dire ce qu'une
+# boîte ne doit PAS faire : atteindre les deux.
+RANGEE_HAUTE = (59, 62)
+RANGEE_BASSE = (74, 78)
 
 
 def _centre_vertical(boite, haut_de_bande):
     """dy du centre d'une boîte, ramené au repère de `card.center`."""
     return haut_de_bande + boite[1] + boite[3] / 2
+
+
+def _couvre_les_deux_rangees(boite, haut_de_bande):
+    """
+    L'étendue verticale de cette boîte atteint-elle les DEUX rangées ?
+
+    C'est ÇA qui rend une boîte inutilisable : elle ne contient alors
+    plus une icône mais deux moitiés d'icônes. Et c'est une propriété de
+    l'ÉTENDUE, pas de la hauteur : une boîte de 26 px de haut peut très
+    bien couvrir les deux rangées (`Viktor gauche`, dy +54..+80) pendant
+    qu'une de 27 px n'en couvre qu'une.
+    """
+    y0 = haut_de_bande + boite[1]
+    y1 = y0 + boite[3]
+
+    def atteint(rangee):
+        return y0 <= rangee[1] and y1 >= rangee[0]
+
+    return atteint(RANGEE_HAUTE) and atteint(RANGEE_BASSE)
 
 
 def test_la_barre_adverse_se_lit_en_haut_de_la_carte():
@@ -489,6 +529,16 @@ def test_la_barre_adverse_se_lit_en_haut_de_la_carte():
     Keeper » en imprime deux aussi (`Can't Block`, `Last Breath`).
     À l'inverse 02BW058 « Jagged Butcher » n'imprime que `Plunder`, un
     déclencheur sans icône : sa carte n'a aucune barre.
+
+    POURQUOI LE PLANCHER DE CURSED KEEPER EST 1 ET NON 2, alors qu'elle
+    imprime DEUX mots-clés : son icône « Can't Block » est un BOUCLIER
+    BLANC, de saturation médiane 17, qu'aucune des trois familles de
+    couleur ne voit (cf. le relevé en tête de `mots_cles_ecran`). Le
+    plancher décrit donc ce que la SEGMENTATION doit rendre, pas ce que
+    la carte imprime — et c'est le masque, pas la bande, qui coûte la
+    seconde icône. Powder Keg est dans le même cas (croix blanche
+    d'Immobile) et garde pourtant un plancher de 2, parce que ses DEUX
+    autres icônes, elles, passent.
     """
     print("\nLa barre des unités ADVERSES")
     for etiquette, chemin, centre, mini in (
@@ -505,8 +555,10 @@ def test_la_barre_adverse_se_lit_en_haut_de_la_carte():
               len(lues) >= mini, lues)
         # LA CONTRE-ÉPREUVE, sans laquelle le test ne prouverait rien :
         # dans la bande de NOS unités, la même carte ne rend rien — c'est
-        # exactement l'état d'avant le correctif.
-        check(f"   et {mini and 'zéro' or ''} du mauvais côté, rien n'est lu",
+        # exactement l'état d'avant le correctif. (Le libellé portait un
+        # `mini and 'zéro' or ''` dont la branche vide était
+        # inatteignable : `mini` vaut toujours 1 ou 2.)
+        check(f"{etiquette:<22} :    du mauvais côté, rien n'est lu",
               mce.icones(img, centre) == [], mce.icones(img, centre))
 
     img = cv2.imread(str(CAPTURE_KENNEN))
@@ -540,19 +592,55 @@ def test_les_deux_rangees_dune_barre_tassee_ne_se_confondent_pas():
 
     Comptes étiquetés par Ewan : Kennen (05BC058) SIX icônes, Viktor
     (03PZ003) SEPT. Ce qu'on exige ici :
-      - la QUINCONCE est vue : au moins deux icônes de chaque côté du
+      - la QUINCONCE est vue : au moins une boîte de chaque côté du
         milieu du bandeau ;
-      - aucune boîte n'en couvre deux : sa hauteur reste celle d'UNE
-        icône (mesuré : 12 à 27 px, jamais les ~37 px des deux rangées) ;
+      - le nombre de boîtes qui ATTEIGNENT LES DEUX RANGÉES ne dépasse
+        pas le relevé ci-dessous — c'est un PLAFOND DE DÉFAUTS CONNUS,
+        pas une propriété satisfaite (voir le bloc qui suit) ;
       - le compte ne dépasse JAMAIS le nombre d'icônes étiquetées — un
         faux positif serait pire qu'une icône manquée.
+
+    ⚠ CE QU'ON VOUDRAIT ÉCRIRE — « AUCUNE boîte ne couvre les deux
+    rangées » — EST FAUX AUJOURD'HUI, ET ÇA SE MESURE (21/11/2026). La
+    première version de ce test affirmait cette propriété en relisant
+    `b[3] <= mce.ICONE_COTE_MAX` : or `_est_un_glyphe` impose DÉJÀ cette
+    borne à toute boîte que `icones()` rend, dans les deux branches de
+    `_icones_et_masque`. **Aucune sortie possible du module ne pouvait
+    la faire rougir** — le sixième exemplaire du motif que CLAUDE.md
+    recense cinq fois (`test_restrictions_levees`, `test_recovered_
+    screen_resets_the_counter`, `RESERVED_FAMILIES`, le Joker…).
+    Le chiffre qui la défendait était faux lui aussi : les hauteurs
+    mesurées sur ces quatre cartes vont de **12 à 31 px**, et le 31 est
+    justement la boîte qui enjambe les deux rangées.
+
+    LES QUATRE ENJAMBEMENTS MESURÉS, un par un (dy relatif au centre) :
+      - Kennen (kennen) : AUCUN — c'est une vraie propriété, et le
+        plafond y est donc ZÉRO ;
+      - Kennen (viktor) : 1, et ce n'est pas une fusion — c'est le HALO
+        bleu du plateau (15×20 à dx +65, dy +62..+82), hors du bandeau
+        (demi-largeur 71 px) mais dans `BARRE_DEMI_LARGEUR` = 80. C'est
+        le faux positif déjà décrit en tête de `mots_cles_ecran` ; il
+        partira avec lui ;
+      - Viktor gauche : 1 — dx +28..+60, dy +54..+80, 32×26, faite de
+        TROIS fragments dont deux de la rangée du haut (centres +61,
+        +63) et un de celle du bas (+73,5) : une vraie fusion ;
+      - Viktor droite : 2 — dx +7..+41, dy +51..+82, 34×31, trois
+        fragments (+60,5 en haut ; +72,5 et +79 en bas), une vraie
+        fusion ; et dx -57..-37, dy +50..+77, 20×27, qui est au
+        contraire UNE SEULE composante connexe, donc un défaut de
+        MASQUE et non d'agglomération (la même icône fait 20×20 sur
+        Viktor gauche).
+    Deux des quatre relèvent donc du masque de couleur (tâche B), un de
+    l'agglomération, un du halo. Le plafond est écrit par carte pour
+    qu'une régression sur UNE carte rougisse, et il est à `<=` pour
+    qu'un correctif ne rougisse pas.
     """
     print("\nLes deux rangées d'une barre tassée")
-    for etiquette, chemin, centre, etiquetees in (
-            ("Kennen (kennen)", CAPTURE_KENNEN, (959, 900), 6),
-            ("Kennen (viktor)", CAPTURE_VIKTOR, (1115, 900), 6),
-            ("Viktor gauche", CAPTURE_VIKTOR, (802, 900), 7),
-            ("Viktor droite", CAPTURE_VIKTOR, (959, 900), 7)):
+    for etiquette, chemin, centre, etiquetees, enjambements in (
+            ("Kennen (kennen)", CAPTURE_KENNEN, (959, 900), 6, 0),
+            ("Kennen (viktor)", CAPTURE_VIKTOR, (1115, 900), 6, 1),
+            ("Viktor gauche", CAPTURE_VIKTOR, (802, 900), 7, 1),
+            ("Viktor droite", CAPTURE_VIKTOR, (959, 900), 7, 2)):
         img = cv2.imread(str(chemin))
         if img is None:
             check(f"capture présente ({etiquette})", False, chemin)
@@ -562,12 +650,17 @@ def test_les_deux_rangees_dune_barre_tassee_ne_se_confondent_pas():
                  if _centre_vertical(b, mce.BARRE_DY_HAUT) <= MILIEU_BANDEAU]
         bas = [b for b in lues
                if _centre_vertical(b, mce.BARRE_DY_HAUT) > MILIEU_BANDEAU]
+        a_cheval = [b for b in lues
+                    if _couvre_les_deux_rangees(b, mce.BARRE_DY_HAUT)]
         check(f"{etiquette:<16} : la rangée du HAUT est vue", len(hauts) >= 1,
               [b[:4] for b in lues])
         check(f"{etiquette:<16} :    et celle du BAS aussi", len(bas) >= 1,
               [b[:4] for b in lues])
-        check(f"{etiquette:<16} : aucune boîte ne couvre les deux rangées",
-              all(b[3] <= mce.ICONE_COTE_MAX for b in lues), [b[:4] for b in lues])
+        check(f"{etiquette:<16} : au plus {enjambements} boîte(s) à cheval "
+              f"sur les deux rangées",
+              len(a_cheval) <= enjambements,
+              [(b[0], mce.BARRE_DY_HAUT + b[1],
+                mce.BARRE_DY_HAUT + b[1] + b[3]) for b in a_cheval])
         check(f"{etiquette:<16} : jamais plus que les {etiquetees} étiquetées",
               len(lues) <= etiquetees, len(lues))
         check(f"{etiquette:<16} : au moins quatre des {etiquetees}",

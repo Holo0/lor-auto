@@ -959,11 +959,21 @@ def test_la_lecture_decran_est_vraiment_branchee():
     bande ne lève rien et ne journalise rien — c'est exactement la
     panne MUETTE qui a rendu le camp adverse aveugle. Le bouchon garde
     donc le drapeau que `lire_les_mots_cles` lui passe.
+
+    ET LE CAMP VIENT DE LA CARTE, PAS DU NOM DE ZONE. Les zones de
+    plateau sont déduites de la HAUTEUR du rectangle, et c'est la
+    mesure que `reconcile_combat_rows` corrige depuis des mois (« la
+    hauteur est une mesure bruitée ; le camp, lui, est donné par l'API
+    et ne se trompe jamais »). Le troisième rectangle ci-dessous est
+    donc à NOUS (`LocalPlayer` vrai) mais sa hauteur le range dans
+    `enemy_board` : sa barre doit malgré tout être cherchée EN BAS.
     """
     print("\nLa lecture d'écran est branchée dans snapshot()")
     board = rect_at_ratio(0.15, code="UNIT_B", card_id=2)
     adverse = rect_at_ratio(0.80, code="UNIT_B", card_id=3, local=False)
-    install_fakes(nexus_rects() + [board, adverse])
+    # À nous, mais rangée dans `enemy_board` par sa seule hauteur.
+    egaree = rect_at_ratio(0.85, code="UNIT_B", card_id=4, local=True, x=400)
+    install_fakes(nexus_rects() + [board, adverse, egaree])
 
     vrai = game_state.mots_cles_ecran.identifier
     vus = []
@@ -979,11 +989,19 @@ def test_la_lecture_decran_est_vraiment_branchee():
         game_state.mots_cles_ecran.identifier = vrai
 
     carte = snap.board[0]
-    en_face = snap.enemy_board[0]
+    # Par CardID : `enemy_board` en contient deux, et l'ordre de la zone
+    # n'est pas celui de la trame.
+    en_face = [c for c in snap.enemy_board if c.card_id == 3][0]
     check("l'écran a été interrogé sous l'unité du banc",
           (carte.center, False) in vus, (vus, carte.center))
     check("   et AU-DESSUS de l'unité adverse",
           (en_face.center, True) in vus, (vus, en_face.center))
+    egaree_lue = [c for c in snap.enemy_board if c.card_id == 4]
+    check("une unité À NOUS rangée dans `enemy_board` par sa hauteur…",
+          len(egaree_lue) == 1, [c.card_id for c in snap.enemy_board])
+    if egaree_lue:
+        check("   …est quand même lue EN BAS : le camp vient de l'API",
+              (egaree_lue[0].center, False) in vus, (vus, egaree_lue[0].center))
     check("le mot-clé lu arrive sur la carte de l'instantané",
           carte.keywords_lus == ("Challenger",), carte.keywords_lus)
     check("et `has` le voit", carte.has("Challenger"))
