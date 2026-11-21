@@ -3653,48 +3653,74 @@ jamais exercé dans une partie. Tests :
 `test_un_mot_cle_lu_ne_retire_jamais_un_imprime`,
 `test_la_lecture_decran_est_vraiment_branchee`.
 
-### Le lexique des icônes — étiqueté par Ewan le 21/11/2026
+### Le lexique des icônes — étiqueté par Ewan les 20 et 21/11/2026
 
-**ONZE GLYPHES NOMMÉS, SUR UN VRAI PLATEAU.** Deux Viktor (03PZ003) et un
-Kennen (05BC058) du banc d'Ewan, chacun portant six ou sept icônes.
+**LA VÉRITÉ TERRAIN EST UNE POSITION, PAS UNE DESCRIPTION.** Premier
+réflexe : décrire les icônes (« épée dorée », « tour dorée ») et les
+apparier d'une carte à l'autre. **Ça s'est trompé deux fois en dix
+minutes** — la tour notée « Robuste » était Immortalité, et l'« épée
+dorée » du Viktor, prise pour la même que celle de Kennen, est Impact
+quand celle de Kennen est Frappe rapide. Deux épées, deux mots-clés.
+C'est exactement pourquoi la reconnaissance se fait au PIXEL et non à la
+description : **le seul fait exploitable est le triplet (capture, carte,
+position), et il vient d'Ewan.** Un gabarit se découpe à une position
+nommée, jamais à une ressemblance.
+
 Captures appariées à leur trame d'API :
 `captures_reference/mots_cles/kennen_20261121_034644.png` et
 `victor_20261121_035752.png` (+ leurs `.json`).
 
-| icône | signification | modélisé ? |
+**Kennen (05BC058), 6 icônes** — imprimé : `Quick Attack` seul.
+
+| # | mot-clé | modélisé ? |
 | --- | --- | --- |
-| cercle bleu à éclair, ou chevron doré | **niveau du champion** | PAS un mot-clé |
-| arcs cyan concentriques | **effet de zone** (`AuraVisualFakeKeyword`) | PAS un mot-clé |
-| épée orange | Frappe rapide | oui — `QuickStrike` |
-| cercle barré orange | Insaisissable | oui — `Elusive` |
-| tour dorée | **Immortalité** | oui, SI c'est `Deathless` — correspondance anglaise À CONFIRMER |
-| face grimaçante orange | Redoutable | oui — `Fearsome` |
-| aile/fourche dorée | Bouclier antisorts | non — `SpellShield`, connu de `riposte.py` seulement |
-| cercle rouge à crochet | Régénération | non — « volontairement non modélisé » |
-| tête cornue dorée | Fureur | non — idem |
-| symbole cyan | Augmentation | non — `Augment` |
-| flamme bleue | Volonté | non — `Spirit` (12 cartes) |
+| 1 | *niveau du champion* | PAS un mot-clé |
+| 2 | Frappe rapide | oui — `QuickStrike` |
+| 3 | Insaisissable | oui — `Elusive` |
+| 4 | Bouclier antisorts | non — `SpellShield`, connu de `riposte.py` seulement |
+| 5 | Régénération | non — « volontairement non modélisé » |
+| 6 | Augmentation | non — `Augment` |
 
-**UNE ÉTIQUETTE CORRIGÉE EN COURS DE ROUTE (21/11).** La tour dorée avait
-d'abord été notée « Robuste » ; Ewan a corrigé : c'est **Immortalité**. Le
-libellé FRANÇAIS fait foi, et la correspondance anglaise reste à trancher —
-`Deathless` est le candidat, mais `Tough`, `Barrier` et `Formidable` sont
-tous modélisés eux aussi, et se tromper reviendrait à faire nommer au bot
-un mot-clé avec aplomb et de travers. **Aucun gabarit ne sera récolté sous
-un nom anglais non confirmé.**
+**Viktor n°1 (03PZ003, banc), 7 icônes** — imprimé : `Augment` seul.
 
-**LA BASE NOMME DÉJÀ LE FAUX MOT-CLÉ.** L'« effet de zone » d'Ewan est
-`AuraVisualFakeKeyword`, porté par **48 cartes**, avec son cousin
-`LandmarkVisualOnly` sur **133** autres. Riot les déclare lui-même comme
-des mots-clés d'AFFICHAGE. L'exclusion s'appuiera donc sur la donnée, pas
-sur une liste d'exceptions devinée — même principe que « on compte les
-marqueurs, on ne reconnaît pas des sorts ».
+| # | mot-clé | modélisé ? |
+| --- | --- | --- |
+| 1 | *niveau du champion* | PAS un mot-clé |
+| 2 | *effet de zone* (`AuraVisualFakeKeyword`) | PAS un mot-clé |
+| 3 | **à confirmer** — « tu connais » | ? |
+| 4 | Immortalité | oui — `Deathless` (confirmé par Ewan) |
+| 5 | Impact | oui — `Impact` |
+| 6 | Volonté | non — `Spirit` (12 cartes) |
+| 7 | **à confirmer** — « tu connais » | ? |
+
+**Viktor n°2 (03PZ003, banc), 7 icônes** — identique au n°1 sauf les
+positions 5 et 6.
+
+| # | mot-clé | modélisé ? |
+| --- | --- | --- |
+| 5 | Fureur | non — `Fury` |
+| 6 | Redoutable | oui — `Fearsome` |
+
+**CE QUI RESTE À NOMMER** : les positions **3 et 7 des deux Viktor**.
+Ewan les a dites « tu connais », donc elles sont parmi les cinq de
+Kennen — mais après la méprise sur les deux épées, **les déduire de leur
+apparence serait refaire l'erreur**. À demander.
+
+**CINQ MOTS-CLÉS MODÉLISÉS SONT DÉJÀ NOMMÉS** et donc récoltables :
+`QuickStrike`, `Elusive`, `Deathless`, `Impact`, `Fearsome`. Chacun
+change un calcul que le bot sait déjà faire.
+
+**LA BASE NOMME ELLE-MÊME LE FAUX MOT-CLÉ.** L'« effet de zone » est
+`AuraVisualFakeKeyword`, porté par **48 cartes**, avec `LandmarkVisualOnly`
+sur **133** autres : Riot les déclare comme des mots-clés d'AFFICHAGE.
+L'exclusion s'appuiera donc sur la donnée, pas sur une liste devinée —
+même principe que « on compte les marqueurs, on ne reconnaît pas des
+sorts ».
 
 **ZÉRO FAUX POSITIF, VÉRIFIÉ SUR CE PLATEAU.** Face aux onze types de
 glyphes ci-dessus, dont AUCUN n'a de gabarit, `identifier` rend `?` à
-chaque fois — il n'en a nommé aucun à tort. C'est la promesse « jamais
-une valeur approchée » tenue sur un plateau réel, et pas seulement sur
-la scène témoin.
+chaque fois. La promesse « jamais une valeur approchée » tient sur un
+plateau réel, et pas seulement sur la scène témoin.
 
 ### TROIS DÉFAUTS MESURÉS LE 21/11, et le troisième aveugle le bot
 
