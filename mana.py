@@ -44,13 +44,15 @@ Deux garde-fous, parce qu'un mana mal lu fait jouer n'importe quoi :
    pas 10 et le mana de sort pas 3 : lire « 18 » signifie qu'on a lu du
    décor, pas un chiffre. Sans cette borne, un bruit plausible passe.
 
-    python mana.py            # lit et affiche
-    python mana.py --crops    # exporte les crops pour recalibrer
+    python mana.py                   # lit mana, mana de sort et les DEUX nexus
+    python mana.py --crops           # exporte les crops pour recalibrer
+    python mana.py --calibrate-nexus # encadre les PV des deux nexus à la souris
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 from collections import Counter
 from dataclasses import dataclass
@@ -59,6 +61,8 @@ from typing import Optional
 
 import cv2
 import numpy as np
+
+import digits
 
 import lor_api
 from lor_api import Window
@@ -97,10 +101,13 @@ NEXUS_HEALTH_REGION = _to_region(NEXUS_HEALTH_BOX)
 MANA_MAX = 10
 SPELL_MANA_MAX = 3
 
-# 20 PV au départ en partie classique, davantage dans certaines aventures.
-# 30 est un compromis : assez large pour les aventures, assez serré pour
-# que du bruit lu à trois chiffres soit rejeté.
-NEXUS_HEALTH_MAX = 30
+# 20 PV au départ en partie classique, 30 dans le défi (vu le 05/09/2026),
+# et DAVANTAGE pour certains boss et avec les reliques de Path of
+# Champions. À 30, un nexus adverse à 35 PV était « illisible » — et sans
+# ses PV, aucune attaque létale n'est jamais tentée. `digits.read_number`
+# refuse déjà tout nombre à trois chiffres : la borne ne protège plus que
+# de très peu de bruit, on la laisse large.
+NEXUS_HEALTH_MAX = 99
 
 UPSCALE = 4
 FIXED_THRESHOLDS = (110, 140, 170, 200)
@@ -108,27 +115,82 @@ DIGITS = "0123456789"
 
 _READER = None
 
+# `--sans-ocr` : ne jamais charger easyocr. La forme (digits.py) lit tout,
+# en mode tolérant quand elle doute. À comparer au journal (`config.ocr`)
+# avant d'en faire le défaut : cf. digits.USAGE.
+OCR_DISABLED = False
+
 
 # ============================================================
 # OCR
 # ============================================================
 
+class OCRIndisponible(RuntimeError):
+    """easyocr est absent de l'interpréteur courant."""
+
+
+OCR_MISSING_MSG = (
+    "easyocr est introuvable : l'interpréteur qui exécute le bot n'est pas "
+    "celui du projet (`.venv`, Python 3.12).\n"
+    "    .\\.venv\\Scripts\\Activate.ps1\n"
+    "    pip install -r requirements.txt        # seulement si easyocr manque vraiment\n"
+    "Contrôle : python -c \"import sys, easyocr; print(sys.executable)\""
+)
+
+
 def _get_reader():
     """
     Instance easyocr partagée avec detect_chiffres si ce module est déjà
     chargé, sinon créée ici. Le partage évite un second modèle en VRAM.
+
+    Lève OCRIndisponible — et pas ModuleNotFoundError — quand easyocr
+    manque : le message dit alors quoi faire, et `preload_reader` peut
+    l'attraper avant que la boucle ne touche à la partie.
     """
     global _READER
     if _READER is not None:
         return _READER
+    if OCR_DISABLED:
+        raise OCRIndisponible("easyocr désactivé (--sans-ocr) : lecture par la forme seule.")
     try:
-        from detect_chiffres import reader as shared_reader
-        _READER = shared_reader
+        from detect_chiffres import get_reader
+        _READER = get_reader()
+        return _READER
+    except ImportError as exc:
+        raise OCRIndisponible(OCR_MISSING_MSG) from exc
     except Exception as exc:
         LOGGER.debug("Lecteur partagé indisponible (%s), création d'un lecteur dédié.", exc)
+    try:
         import easyocr
-        _READER = easyocr.Reader(["en"], gpu=True)
+    except ImportError as exc:
+        raise OCRIndisponible(OCR_MISSING_MSG) from exc
+    _READER = easyocr.Reader(["en"], gpu=True)
     return _READER
+
+
+def preload_reader() -> None:
+    """
+    Charge le modèle OCR AVANT que la boucle ne touche à la partie.
+
+    Deux raisons de le faire tôt plutôt qu'au premier `read_digits` :
+
+    1. UN ENVIRONNEMENT SANS easyocr PLANTAIT AU TOUR 1, mulligan déjà
+       validé et partie en cours — donc une partie abandonnée à chaque
+       fois qu'on lance le bot hors de `.venv` (crash du 19/08/2026).
+    2. Le chargement du modèle prend une dizaine de secondes ; elles
+       tombaient dans le premier tour, chronomètre du jeu compris.
+
+    Avec `--sans-ocr` (OCR_DISABLED), il n'y a rien à charger : on vérifie
+    seulement que les glyphes de `chiffres/` sont là, sinon la forme ne
+    peut rien lire non plus.
+    """
+    if OCR_DISABLED:
+        if not digits.templates_available():
+            raise OCRIndisponible(
+                "--sans-ocr demandé mais chiffres/0.png … 9.png manquent : rien ne peut lire le mana."
+            )
+        return
+    _get_reader()
 
 
 def _binarisation_variants(crop: np.ndarray):
@@ -153,15 +215,33 @@ def read_digits(crop: Optional[np.ndarray], maximum: int, debug: bool = False) -
     if crop is None or crop.size == 0:
         return None
 
-    reader = _get_reader()
+    # La forme d'abord (digits.py, ~1 ms) : sûre, elle suffit ; douteuse,
+    # l'OCR tranche et elle ne sert qu'en dernier recours.
+    fast = digits.read_number(crop, maximum)
+    if fast is not None:
+        digits.USAGE["forme"] += 1
+        if debug:
+            print(f"    forme : {fast} (sûr, sans OCR)")
+        return fast
+
+    try:
+        reader = _get_reader()
+    except OCRIndisponible:
+        # Pas d'easyocr ici (--sans-ocr, rejeu d'une trace dans une VM,
+        # machine sans `.venv`) : la forme seule, en mode tolérant, vaut
+        # mieux que rien. Sans --sans-ocr, on n'arrive jamais ici en
+        # partie réelle : `preload_reader()` arrête le bot avant le combat.
+        value = digits.read_number(crop, maximum, loose=True)
+        digits.USAGE["tolerant" if value is not None else "echec"] += 1
+        return value
     votes = Counter()
 
     for name, image in _binarisation_variants(crop):
         for text in reader.readtext(image, detail=0, allowlist=DIGITS):
-            digits = "".join(ch for ch in str(text) if ch.isdigit())
-            if not digits:
+            found = "".join(ch for ch in str(text) if ch.isdigit())
+            if not found:
                 continue
-            value = int(digits)
+            value = int(found)
             if 0 <= value <= maximum:
                 votes[value] += 1
             elif debug:
@@ -170,7 +250,10 @@ def read_digits(crop: Optional[np.ndarray], maximum: int, debug: bool = False) -
     if debug:
         print(f"    votes : {dict(votes)}")
     if not votes:
-        return None
+        value = digits.read_number(crop, maximum, loose=True)
+        digits.USAGE["tolerant" if value is not None else "echec"] += 1
+        return value
+    digits.USAGE["easyocr"] += 1
     return votes.most_common(1)[0][0]
 
 
@@ -241,26 +324,166 @@ def read_mana_pool(
     return ManaPool(mana=mana, spell_mana=spell)
 
 
+# ============================================================
+# PV DES NEXUS — DÉCOUPE RELATIVE AU NEXUS
+# ============================================================
+# La zone n'est PAS en coordonnées d'écran : elle est exprimée en fractions
+# du rectangle du nexus, que l'API nous donne pour les DEUX camps. Une
+# seule calibration couvre donc notre nexus et celui d'en face, et elle
+# survit à un changement de résolution — contrairement à une zone en dur,
+# qui ne vaut que pour un côté et une taille d'écran.
+#
+#     python mana.py --calibrate-nexus
+#
+# fait encadrer les deux chiffres à la souris et enregistre les offsets.
+
+NEXUS_RELATIVE_KEY = "nexus_health_relative"
+
+
+def _calibration_path():
+    return lor_api.PROJECT_ROOT / "calibration.json"
+
+
+def _load_relative() -> dict:
+    try:
+        with open(_calibration_path(), encoding="utf8") as handle:
+            value = json.load(handle).get(NEXUS_RELATIVE_KEY) or {}
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _save_relative(side: str, offsets) -> None:
+    path = _calibration_path()
+    try:
+        with open(path, encoding="utf8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        data = {}
+    block = data.get(NEXUS_RELATIVE_KEY)
+    if not isinstance(block, dict):
+        block = {}
+    block[side] = list(offsets)
+    data[NEXUS_RELATIVE_KEY] = block
+    with open(path, "w", encoding="utf8") as handle:
+        json.dump(data, handle, indent=2, ensure_ascii=False)
+
+
+def crop_relative_to(screen: np.ndarray, box: tuple, offsets: tuple):
+    """Découpe une zone exprimée en fractions d'un rectangle de référence."""
+    left, top, right, bottom = box
+    width, height = right - left, bottom - top
+    rx, ry, rw, rh = offsets
+    return lor_api.crop_box(
+        screen,
+        (left + rx * width, top + ry * height,
+         left + (rx + rw) * width, top + (ry + rh) * height),
+    )
+
+
 def read_nexus_health(
+    snapshot=None,
     screen: Optional[np.ndarray] = None,
     window: Optional[Window] = None,
+    local: bool = True,
     debug: bool = False,
 ) -> Optional[int]:
     """
-    PV de NOTRE nexus, ou None si illisible.
+    PV d'un nexus, le nôtre par défaut.
 
-    None n'est pas 0 : l'appelant doit traiter le cas « je ne sais pas »
+    None n'est pas 0 : l'appelant doit traiter « je ne sais pas »
     différemment de « je suis à un point de perdre ». Confondre les deux
     ferait sacrifier des unités sans raison à chaque tour.
+
+    Trois chemins, du plus fiable au moins :
+        1. offsets calibrés + rectangle du nexus donné par l'API ;
+        2. pour NOTRE nexus seulement, la zone historique en dur ;
+        3. None, plutôt qu'une lecture prise au hasard.
     """
-    window = window or lor_api.get_window()
+    window = window or (snapshot.window if snapshot is not None else lor_api.get_window())
     if screen is None:
         screen = lor_api.capture_screen_bgr()
+
+    side = "local" if local else "enemy"
+    offsets = _load_relative().get(side)
+    box = None
+    if snapshot is not None:
+        box = snapshot.our_nexus_box if local else snapshot.enemy_nexus_box
+
     if debug:
-        print("  PV nexus :")
-    return read_digits(
-        crop_region(screen, window, NEXUS_HEALTH_REGION), NEXUS_HEALTH_MAX, debug
+        print(f"  PV nexus {side} :")
+
+    if offsets and box:
+        crop = crop_relative_to(screen, box, offsets)
+        return read_digits(crop, NEXUS_HEALTH_MAX, debug)
+
+    if local:
+        # Repli sur la zone calibrée à la main en 1920x1080. Elle ne vaut
+        # que pour notre nexus et cette résolution, d'où l'intérêt de la
+        # calibration relative.
+        return read_digits(
+            crop_region(screen, window, NEXUS_HEALTH_REGION), NEXUS_HEALTH_MAX, debug
+        )
+
+    LOGGER.info(
+        "PV du nexus adverse non calibrés : lance `python mana.py --calibrate-nexus`."
     )
+    return None
+
+
+def calibrate_nexus_health() -> None:
+    """
+    Fait encadrer les deux chiffres de PV, et enregistre leur position
+    RELATIVE au rectangle de chaque nexus.
+
+    À lancer pendant un combat, les deux nexus visibles.
+    """
+    import game_state
+
+    try:
+        api_data = lor_api.get_positional_rectangles()
+    except lor_api.ApiUnavailable as exc:
+        print(f"API injoignable : {exc}")
+        return
+
+    window = lor_api.get_window(api_data)
+    rectangles = api_data.get("Rectangles") or []
+    our_box, enemy_box = game_state.nexus_boxes(rectangles, window)
+
+    if not our_box or not enemy_box:
+        print("Les deux nexus ne sont pas visibles : lance ceci pendant un combat.")
+        return
+
+    screen = lor_api.capture_screen_bgr()
+    print(f"Nexus allié   : {our_box}")
+    print(f"Nexus adverse : {enemy_box}\n")
+
+    for side, box, label in (
+        ("local", our_box, "TON nexus (gemme du bas)"),
+        ("enemy", enemy_box, "le nexus ADVERSE (gemme du haut)"),
+    ):
+        print(f"Encadre le chiffre de PV de {label}, puis ENTRÉE.")
+        selection = game_state.pick_box_tk(screen, title=f"Chiffre de PV — {label}")
+        if selection is None:
+            print("  annulé, on s'arrête là.")
+            return
+
+        x, y, w, h = selection
+        left, top, right, bottom = box
+        ref_w, ref_h = right - left, bottom - top
+        offsets = (
+            (x - left) / ref_w, (y - top) / ref_h,
+            w / ref_w, h / ref_h,
+        )
+        _save_relative(side, offsets)
+
+        value = read_digits(crop_relative_to(screen, box, offsets), NEXUS_HEALTH_MAX)
+        print(f"  offsets ({offsets[0]:.3f}, {offsets[1]:.3f}, "
+              f"{offsets[2]:.3f}, {offsets[3]:.3f}) -> lecture : {value}\n")
+
+    print(f"Enregistré dans {_calibration_path().name}.")
+    print("La lecture suivra désormais la position des nexus donnée par l'API,")
+    print("des deux côtés et à n'importe quelle résolution.")
 
 
 # ============================================================
@@ -298,20 +521,32 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Lecture du mana (Legends of Runeterra).")
     parser.add_argument("--crops", action="store_true", help="exporte les crops de calibration")
     parser.add_argument("--debug", action="store_true", help="détaille les votes de l'OCR")
+    parser.add_argument("--calibrate-nexus", action="store_true",
+                        help="encadrer les PV des deux nexus à la souris")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+    if args.calibrate_nexus:
+        calibrate_nexus_health()
+        return
 
     if args.crops:
         save_crops()
         return
 
+    import game_state
+    reader = game_state.GameStateReader()
+    snapshot = reader.snapshot()
     screen = lor_api.capture_screen_bgr()
-    window = lor_api.get_window()
-    pool = read_mana_pool(screen=screen, window=window, debug=args.debug)
-    health = read_nexus_health(screen=screen, window=window, debug=args.debug)
+
+    pool = read_mana_pool(screen=screen, window=snapshot.window, debug=args.debug)
+    ours = read_nexus_health(snapshot, screen=screen, local=True, debug=args.debug)
+    theirs = read_nexus_health(snapshot, screen=screen, local=False, debug=args.debug)
+
     print(f"\n{pool}")
-    print(f"PV nexus : {'?' if health is None else health}")
+    print(f"PV nexus allié   : {'?' if ours is None else ours}")
+    print(f"PV nexus adverse : {'?' if theirs is None else theirs}")
 
 
 if __name__ == "__main__":

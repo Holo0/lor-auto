@@ -1,0 +1,22 @@
+/assets
+/.venv
+/venv
+__pycache__/
+calibration_crops
+debug_cards
+logs/
+screenshots/
+/traces
+
+# Data Dragon : 124 Go d'images téléchargées, entièrement regénérables.
+/LoR_DDragon
+
+# Sauvegardes locales de CLAUDE.md et du présent fichier.
+CLAUDE.md.bak-*
+.gitignore.bak-*
+
+# Restes d'anciennes manipulations git, sans valeur.
+/_to_delete/git_leftovers
+
+# Sauvegardes locales du journal.
+*.jsonl.bak-*

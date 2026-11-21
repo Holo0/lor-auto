@@ -40,6 +40,10 @@ GET /positional-rectangles
                      "LocalPlayer": true}, ...]}
     Le rectangle de CardCode "face" est le nexus (un par joueur).
 
+GET /static-decklist
+    {"DeckCode": "CEBA...", "CardsInDeck": {"01IO015": 3, ...}}
+    Notre deck de la partie en cours (CardsInDeck vaut null hors partie).
+
 GET /game-result
     {"GameID": 12, "LocalPlayerWon": true}
     Décrit la DERNIÈRE partie terminée. GameID est monotone croissant :
@@ -51,6 +55,7 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -66,8 +71,20 @@ LOGGER = logging.getLogger(__name__)
 # CONFIGURATION
 # ============================================================
 
-API_BASE = "http://127.0.0.1:21337"
+# LE PORT DE L'API N'EST PAS FIXE. 21337 est celui que le client prend
+# quand il est libre — mais le 04/11/2026 il était sur 21338, et rien ne
+# le disait : le bot a traversé la carte, lancé le boss final et attendu
+# 120 s devant un mulligan qu'il ne voyait pas. Un simple changement de
+# constante ne suffirait pas, puisque le port suivant est pris au
+# lancement suivant selon ce qui est libre. On SONDE.
+API_HOST = "127.0.0.1"
+API_PORT_DEFAULT = 21337
+# Les ports essayés, dans l'ordre, quand celui en cours ne répond pas.
+API_PORT_CANDIDATES = tuple(range(21337, 21348))
+API_BASE = f"http://{API_HOST}:{API_PORT_DEFAULT}"
 API_TIMEOUT = 2.0
+# Sonde plus courte que la lecture normale : on en fait une par port.
+API_PROBE_TIMEOUT = 0.6
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 # Chemin résolu depuis l'emplacement DU FICHIER et non depuis le
@@ -91,12 +108,80 @@ class ApiUnavailable(RuntimeError):
 # APPELS API
 # ============================================================
 
+def set_api_port(port: int) -> str:
+    """Fixe le port de l'API et renvoie la nouvelle base."""
+    global API_BASE
+    API_BASE = f"http://{API_HOST}:{int(port)}"
+    return API_BASE
+
+
+def probe_api_port(port: int, timeout: float = API_PROBE_TIMEOUT) -> bool:
+    """
+    Ce port porte-t-il l'API du client ?
+
+    On ne se contente pas d'un port OUVERT : d'autres services tournent
+    dans ces eaux-là. La réponse doit être le JSON de l'API, reconnu à
+    ses clés (`Rectangles` / `GameState`). Un port ouvert qui répond
+    autre chose est écarté.
+    """
+    url = f"http://{API_HOST}:{int(port)}/positional-rectangles"
+    try:
+        data = _SESSION.get(url, timeout=timeout).json()
+    except Exception:      # noqa: BLE001 — un port muet n'est pas une erreur
+        return False
+    return isinstance(data, dict) and ("Rectangles" in data or "GameState" in data)
+
+
+def find_api_base(candidates=API_PORT_CANDIDATES) -> Optional[str]:
+    """
+    Cherche le port de l'API et l'adopte. Rend la base trouvée, ou None.
+
+    Le port en cours est essayé d'abord : quand il répond, la recherche
+    ne coûte rien. Ce n'est pas une boucle de réessai — un seul passage,
+    puis l'appelant décide.
+    """
+    courant = _port_courant()
+    ordre = [courant] + [p for p in candidates if p != courant]
+    for port in ordre:
+        if probe_api_port(port):
+            if port != courant:
+                LOGGER.warning(
+                    "API du client trouvée sur le port %d (et non %d) : "
+                    "le client prend le premier port libre.", port, courant)
+            return set_api_port(port)
+    return None
+
+
+def _port_courant() -> int:
+    try:
+        return int(API_BASE.rsplit(":", 1)[1])
+    except (IndexError, ValueError):
+        return API_PORT_DEFAULT
+
+
 def get_json(endpoint: str, timeout: float = API_TIMEOUT):
     """
     Appelle un endpoint de l'API locale et renvoie le JSON décodé.
     Lève ApiUnavailable si le client ne répond pas ou renvoie autre
     chose que du JSON (ce qui arrive pendant les écrans de chargement).
+
+    UN REFUS DE CONNEXION DÉCLENCHE UNE RECHERCHE DE PORT, une seule fois
+    par appel : le client a pu démarrer sur un autre port que celui qu'on
+    interroge (cf. API_PORT_CANDIDATES). Un refus est le bon signal — un
+    délai dépassé ou un JSON invalide veulent dire « quelqu'un répond »,
+    et changer de port là-dessus ferait perdre le bon.
     """
+    try:
+        return _get(endpoint, timeout)
+    except ApiUnavailable:
+        if not _connexion_refusee():
+            raise
+        if find_api_base() is None:
+            raise
+        return _get(endpoint, timeout)
+
+
+def _get(endpoint: str, timeout: float):
     url = f"{API_BASE}/{endpoint.lstrip('/')}"
     try:
         response = _SESSION.get(url, timeout=timeout)
@@ -104,6 +189,19 @@ def get_json(endpoint: str, timeout: float = API_TIMEOUT):
         return response.json()
     except (requests.RequestException, ValueError) as exc:
         raise ApiUnavailable(f"{endpoint} : {exc}") from exc
+
+
+def _connexion_refusee() -> bool:
+    """Le port est-il muet ? (refus franc, pas un délai dépassé)"""
+    probe = socket.socket()
+    probe.settimeout(API_PROBE_TIMEOUT)
+    try:
+        probe.connect((API_HOST, _port_courant()))
+        return False
+    except Exception:      # noqa: BLE001 — refus, délai, hôte injoignable
+        return True
+    finally:
+        probe.close()
 
 
 def get_positional_rectangles() -> dict:
@@ -114,6 +212,15 @@ def get_positional_rectangles() -> dict:
 def get_game_result() -> dict:
     """Résultat de la dernière partie terminée ({} si aucune)."""
     return get_json("game-result")
+
+
+def get_static_decklist() -> dict:
+    """
+    Notre deck de la partie EN COURS : {"DeckCode": ..., "CardsInDeck":
+    {"01IO015": 3, ...}}. `CardsInDeck` est None hors partie. C'est la
+    seule chose que l'API dise de ce qu'on n'a PAS encore vu.
+    """
+    return get_json("static-decklist")
 
 
 def api_is_up() -> bool:
@@ -161,6 +268,38 @@ def load_card_db(folder: Path = CARD_SETS_PATH) -> dict:
 
     LOGGER.info("%d cartes chargées depuis %s", len(db), folder)
     return db
+
+
+# UNE BASE PRÉSENTE PEUT ÊTRE INCOMPLÈTE, ET ÇA NE SE VOIT PAS.
+# « 2653 cartes » avait l'air complet. Il manquait pourtant TOUT le
+# préfixe « 99… » — des cartes exclusives au mode aventure PvE, que
+# Riot ne publie dans AUCUN paquet du Data Dragon (recensé le
+# 10/11/2026 : quatorze paquets existent, aucun ne les contient) et que
+# le bot rencontre à chaque tentative. Sans elles, `game_state` lit
+# « 0/0 (inconnue) », `classify_card` rend `Targeting.NONE`, et le bot
+# pose une carte qu'il ne sait pas résoudre : 23 s perdues sur 99PZ130
+# le 09/11/2026 à 19:31, 8 s de plus au combat suivant.
+#
+# Ces cinq codes ont été RELEVÉS DANS LES LOGS, pas choisis : ils sont
+# le témoin le moins cher qu'un compte de cartes ne dit pas tout. S'ils
+# sont connus, c'est que `cartes_hors_ddragon.json` est là.
+# Remplissage : `python LoR-Bot/code/download_card_sets.py`.
+CODES_TEMOINS = ("99PZ104", "99PZ130", "99SH003", "99MT003", "99IO003")
+
+
+def etat_base_cartes(db: Optional[dict] = None) -> tuple:
+    """
+    (total, hors_ddragon, codes témoins manquants).
+
+    `hors_ddragon` compte les cartes qui ne viennent pas de Riot — elles
+    portent un champ `source`. Les témoins manquants NOMMENT le trou :
+    une base complète en rend zéro.
+    """
+    if db is None:
+        db = load_card_db()
+    hors = sum(1 for carte in db.values() if carte.get("source"))
+    manquants = tuple(code for code in CODES_TEMOINS if code not in db)
+    return len(db), hors, manquants
 
 
 # ============================================================
@@ -318,7 +457,11 @@ if __name__ == "__main__":
     print(f"API joignable        : {api_is_up()}")
     print(f"Fenêtre du jeu       : {find_game_window()}")
     print(f"Fenêtre retenue      : {get_window()}")
-    print(f"Cartes en base       : {len(load_card_db())}")
+    total, hors, manquants = etat_base_cartes()
+    print(f"Cartes en base       : {total} (dont {hors} hors Data Dragon)")
+    if manquants:
+        print(f"  TÉMOINS MANQUANTS  : {', '.join(manquants)} — lance "
+              f"LoR-Bot/code/download_card_sets.py")
     try:
         data = get_positional_rectangles()
         print(f"GameState            : {data.get('GameState')}")

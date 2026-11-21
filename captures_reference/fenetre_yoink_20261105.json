@@ -1,0 +1,181 @@
+{
+ "_source": "traces/challenges_20261105_170723 (t=315.472) — 2026-11-05 17:12:50, blocage Yoink!",
+ "GameState": "InProgress",
+ "Screen": {
+  "ScreenWidth": 1920,
+  "ScreenHeight": 1080
+ },
+ "Rectangles": [
+  {
+   "CardID": 304243257,
+   "CardCode": "face",
+   "TopLeftX": 179,
+   "TopLeftY": 481,
+   "Width": 117,
+   "Height": 117,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1451298957,
+   "CardCode": "face",
+   "TopLeftX": 179,
+   "TopLeftY": 716,
+   "Width": 117,
+   "Height": 117,
+   "LocalPlayer": false
+  },
+  {
+   "CardID": 169235146,
+   "CardCode": "98SB002",
+   "TopLeftX": 478,
+   "TopLeftY": 77,
+   "Width": 175,
+   "Height": 245,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1031287634,
+   "CardCode": "98SB001",
+   "TopLeftX": 1262,
+   "TopLeftY": 260,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 994820313,
+   "CardCode": "05BC100",
+   "TopLeftX": 634,
+   "TopLeftY": 84,
+   "Width": 176,
+   "Height": 246,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1898075386,
+   "CardCode": "98SB004",
+   "TopLeftX": 822,
+   "TopLeftY": 260,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 909191806,
+   "CardCode": "98SB031",
+   "TopLeftX": 529,
+   "TopLeftY": 260,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 437725854,
+   "CardCode": "98SB006",
+   "TopLeftX": 792,
+   "TopLeftY": 86,
+   "Width": 176,
+   "Height": 247,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1153891470,
+   "CardCode": "05BC039",
+   "TopLeftX": 1119,
+   "TopLeftY": 789,
+   "Width": 257,
+   "Height": 374,
+   "LocalPlayer": false
+  },
+  {
+   "CardID": 258355962,
+   "CardCode": "05BC093",
+   "TopLeftX": 969,
+   "TopLeftY": 260,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 50127857,
+   "CardCode": "05BC167T1",
+   "TopLeftX": 837,
+   "TopLeftY": 1250,
+   "Width": 149,
+   "Height": 217,
+   "LocalPlayer": false
+  },
+  {
+   "CardID": 940784910,
+   "CardCode": "05BC235",
+   "TopLeftX": 676,
+   "TopLeftY": 260,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1189731917,
+   "CardCode": "05BC007",
+   "TopLeftX": 1116,
+   "TopLeftY": 260,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1278610636,
+   "CardCode": "05BC235",
+   "TopLeftX": 542,
+   "TopLeftY": 789,
+   "Width": 257,
+   "Height": 374,
+   "LocalPlayer": false
+  },
+  {
+   "CardID": 669609946,
+   "CardCode": "05BC100",
+   "TopLeftX": 950,
+   "TopLeftY": 84,
+   "Width": 177,
+   "Height": 248,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 537484303,
+   "CardCode": "98SB003",
+   "TopLeftX": 837,
+   "TopLeftY": 598,
+   "Width": 115,
+   "Height": 115,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1256569171,
+   "CardCode": "05BC223",
+   "TopLeftX": 1110,
+   "TopLeftY": 78,
+   "Width": 178,
+   "Height": 249,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1103604230,
+   "CardCode": "98SB001",
+   "TopLeftX": 1271,
+   "TopLeftY": 67,
+   "Width": 179,
+   "Height": 250,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1566250659,
+   "CardCode": "05BC127",
+   "TopLeftX": 831,
+   "TopLeftY": 789,
+   "Width": 257,
+   "Height": 374,
+   "LocalPlayer": false
+  }
+ ]
+}

@@ -5,7 +5,28 @@ import time
 import logging
 import pyautogui
 
-from adventure_navigation import find_template_on_screen, TEMPLATES, MATCH_THRESHOLD
+from adventure_navigation import (
+    find_template_on_screen,
+    find_all_matches_on_screen,
+    TEMPLATES,
+    MATCH_THRESHOLD,
+)
+
+# ============================================================
+# VITESSE DES GESTES
+# ============================================================
+# pyautogui dort `PAUSE` secondes après CHAQUE appel public, et vaut 0.1 s
+# par défaut. `human_move_mouse` trace une courbe en dizaines de `moveTo` :
+# la pause invisible dominait donc complètement la durée annoncée par
+# `duration`. On la désactive et on temporise explicitement, là où c'est
+# utile. Voir le commentaire d'actions.py, qui fait le même choix.
+pyautogui.PAUSE = 0
+
+# 1.0 = durées d'origine, 2.0 = deux fois plus rapide. `actions.py` tient
+# la même valeur et `actions.set_gesture_speed()` règle les deux à la fois,
+# pour qu'une commande `--speed` s'applique aussi bien à la navigation
+# qu'au combat.
+GESTURE_SPEED = 2.0
 
 # ============================================================
 # PAUSES HUMAINES (secondes)
@@ -13,16 +34,28 @@ from adventure_navigation import find_template_on_screen, TEMPLATES, MATCH_THRES
 # Bornes min/max — un délai aléatoire est tiré à chaque appel pour
 # éviter un pattern robotique. À ajuster si certains écrans mettent
 # plus ou moins longtemps à charger chez toi.
+#
+# Ces quatre-là attendent le CLIENT, pas la souris : un écran qui charge,
+# une animation d'apparition avant de chercher un template. Elles suivent
+# la vitesse, mais avec un plancher — chercher un bouton sur une frame de
+# transition, c'est le manquer, et repartir pour un tour de boucle.
 
 DELAY_AFTER_CLICK = (0.6, 1.2)          # après un clic simple (ex: clic sur un node)
 DELAY_AFTER_TRANSITION = (1.2, 2.2)     # après un clic qui change d'écran (voyage, select, combat, quit)
 DELAY_BEFORE_SEARCH = (0.3, 0.7)        # avant de chercher un template (laisse l'animation d'apparition finir)
 DELAY_BETWEEN_RETRIES = (1.0, 1.8)      # entre deux tentatives en cas d'échec de détection
 
+UI_DELAY_FLOOR = 0.30                   # sous ce seuil, l'écran n'a pas fini de charger
 
-def human_delay(bounds):
+
+def scaled(seconds, floor=0.0):
+    """Durée ramenée à l'échelle `GESTURE_SPEED`, sans descendre sous `floor`."""
+    return max(floor, seconds / max(0.1, GESTURE_SPEED))
+
+
+def human_delay(bounds, floor=UI_DELAY_FLOOR):
     """Attend une durée aléatoire dans l'intervalle `bounds` (min, max)."""
-    duration = random.uniform(*bounds)
+    duration = scaled(random.uniform(*bounds), floor)
     time.sleep(duration)
     return duration
 
@@ -41,10 +74,15 @@ def human_move_mouse(target_x, target_y):
 
     distance = math.hypot(target_x - start_x, target_y - start_y)
     if distance < 10:
-        pyautogui.moveTo(target_x, target_y, duration=random.uniform(0.05, 0.15))
+        pyautogui.moveTo(target_x, target_y, duration=scaled(random.uniform(0.05, 0.15)))
         return
 
-    steps = int(max(15, distance / 15))
+    # Nombre de points de la courbe, PLAFONNÉ. Sans plafond, un déplacement
+    # d'un bord à l'autre de l'écran en demandait une soixantaine — chacun
+    # étant un appel système, et jadis une pause de 0.1 s. Une quarantaine
+    # de points suffit à ce que le trajet reste courbe et non saccadé ; au
+    # delà on paie des appels pour des pixels que personne ne regarde.
+    steps = int(min(40, max(12, distance / 25)))
     ctrl_offset = min(120, distance * 0.25)
 
     p1_x = start_x + (target_x - start_x) * 0.25 + random.uniform(-ctrl_offset, ctrl_offset)
@@ -52,7 +90,7 @@ def human_move_mouse(target_x, target_y):
     p2_x = start_x + (target_x - start_x) * 0.75 + random.uniform(-ctrl_offset, ctrl_offset)
     p2_y = start_y + (target_y - start_y) * 0.75 + random.uniform(-ctrl_offset, ctrl_offset)
 
-    duration = random.uniform(0.4, 0.7)
+    duration = scaled(random.uniform(0.4, 0.7))
 
     for i in range(steps + 1):
         t = ease_out_cubic(i / steps)
@@ -72,14 +110,40 @@ def human_move_mouse(target_x, target_y):
         time.sleep(duration / steps)
 
     pyautogui.moveTo(target_x, target_y)
-    time.sleep(random.uniform(0.05, 0.12))
+    time.sleep(scaled(random.uniform(0.05, 0.12), floor=0.02))
 
 
 def human_click(x, y):
     human_move_mouse(x + random.randint(-3, 3), y + random.randint(-3, 3))
-    time.sleep(random.uniform(0.08, 0.18))
+    time.sleep(scaled(random.uniform(0.08, 0.18), floor=0.03))
     pyautogui.click()
-    time.sleep(random.uniform(0.15, 0.3))
+    time.sleep(scaled(random.uniform(0.15, 0.3), floor=0.06))
+
+
+# ============================================================
+# GARER LA SOURIS
+# ============================================================
+# Un bouton peut être INVISIBLE POUR LE TEMPLATE parce que le curseur est
+# dessus : au survol, le jeu l'éclaire, l'agrandit ou l'accompagne d'une
+# infobulle, et l'image ne correspond plus. Demandé par Ewan le
+# 02/09/2026 : quand tous les boutons ont été cherchés en vain, on
+# déplace la souris avant de rechercher. Les points de stationnement sont
+# sur le BORD GAUCHE de l'écran, où aucun bouton ne vit, et on alterne
+# entre deux hauteurs pour ne pas rester au même endroit.
+PARKING_SPOTS = ((0.04, 0.50), (0.04, 0.72))
+_parking_turn = 0
+
+
+def park_mouse():
+    """Range le curseur hors de tout bouton ; alterne entre deux points."""
+    global _parking_turn
+    width, height = pyautogui.size()
+    rx, ry = PARKING_SPOTS[_parking_turn % len(PARKING_SPOTS)]
+    _parking_turn += 1
+    x, y = int(width * rx) + random.randint(-6, 6), int(height * ry) + random.randint(-10, 10)
+    logging.info("Souris garée en (%d, %d) : un bouton est peut-être caché dessous.", x, y)
+    human_move_mouse(x, y)
+    time.sleep(scaled(0.25, floor=0.1))
 
 
 # ============================================================
@@ -103,16 +167,29 @@ def click_button(image_name, timeout=10, threshold=MATCH_THRESHOLD, transition=F
     logging.info(f"Recherche du bouton : {image_name}")
 
     start = time.time()
+    parked = False
     while time.time() - start < timeout:
         human_delay(DELAY_BEFORE_SEARCH)
+        # À mi-parcours d'une recherche longue, on déplace la souris une
+        # fois : si le bouton était sous le curseur, il redevient
+        # reconnaissable pour la seconde moitié.
+        if not parked and timeout >= 3 and time.time() - start >= timeout / 2:
+            park_mouse()
+            parked = True
         coords = find_template_on_screen(template_path, threshold)
         if coords:
             x, y = coords
             pyautogui.moveTo(x, y)
+            # Explicite depuis que PAUSE vaut 0 : le curseur doit être
+            # ARRIVÉ avant l'appui, sinon le clic part de l'ancien point.
+            time.sleep(scaled(0.12, floor=0.05))
             pyautogui.click()
             logging.info(f"Bouton '{image_name}' cliqué.")
             human_delay(DELAY_AFTER_TRANSITION if transition else DELAY_AFTER_CLICK)
-            return True
+            # Le POINT cliqué, et non un simple True : il reste vrai dans
+            # un `if`, et permet de recliquer au même endroit (sortie du
+            # boss final, lor_battle) une fois le bouton disparu.
+            return (x, y)
 
         time.sleep(0.3)
 
@@ -155,6 +232,31 @@ def wait_for_image(image_path, timeout=10, threshold=MATCH_THRESHOLD, poll_inter
         time.sleep(poll_interval)
 
     logging.warning(f"Image non détectée après {timeout}s : {label}")
+    return None
+
+
+def topmost_match(image_path, timeout=10, threshold=MATCH_THRESHOLD, poll_interval=0.3):
+    """
+    Comme wait_for_image, mais pour une image qui peut apparaître PLUSIEURS
+    fois à l'écran (ex: une liste d'entrées identiques). Attend qu'au
+    moins une occurrence soit visible et retourne celle du HAUT de la
+    liste — c'est-à-dire la première.
+
+    Retourne (x, y) si au moins une occurrence est trouvée, sinon None.
+    """
+    label = os.path.basename(image_path)
+    logging.info(f"Attente d'une liste contenant : {label}")
+
+    start = time.time()
+    while time.time() - start < timeout:
+        human_delay(DELAY_BEFORE_SEARCH)
+        matches = find_all_matches_on_screen(image_path, threshold)
+        if matches:
+            logging.info(f"{len(matches)} occurrence(s) de {label}, on prend la première : {matches[0]}")
+            return matches[0]
+        time.sleep(poll_interval)
+
+    logging.warning(f"Aucune occurrence de {label} détectée après {timeout}s.")
     return None
 
 

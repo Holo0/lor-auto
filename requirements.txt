@@ -2,7 +2,6 @@ numpy
 opencv-python
 pyautogui
 pillow
-keyboard
 pywin32
 requests
-termcolor
+easyocr
