@@ -1386,7 +1386,7 @@ def lire_les_mots_cles(screen, zones: dict) -> int:
         pts=[...]; t=time.perf_counter(); [m.identifier(img,p) for p in pts]"
 
     AVANT correctif (`mots_cles_ecran.identifier` segmentait trois fois la
-    même bande par glyphe — voir `_icones_et_masque`) : 5 exécutions
+    même bande par glyphe — voir `_icones_et_glyphes`) : 5 exécutions
     fraîches 57.1-62.8 ms (moyenne 59.7 ms) ; dans un même processus,
     gabarits déjà en cache (2e/3e appel, le régime réel pendant un
     combat) : 49.8-50.9 ms.

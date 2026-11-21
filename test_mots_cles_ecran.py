@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 import cv2
+import numpy as np
 
 import mots_cles_ecran as mce
 
@@ -283,7 +284,7 @@ def test_un_glyphe_fragmente_se_recolle_entier():
     # bande `+38..+82` ; dans la bande actuelle `+47..+82` la tache fait
     # **25×21 à x=107**, ce qui est une taille de glyphe parfaitement
     # plausible. Et rien n'est écarté avant l'agglomération :
-    # `_icones_et_masque` le dit en majuscules (« ON NE FILTRE PAS LES
+    # `_icones_et_glyphes` le dit en majuscules (« ON NE FILTRE PAS LES
     # FRAGMENTS TROP GRANDS ICI »). Ce qui l'écarte, c'est le garde du
     # bandeau : la médiane de son anneau vaut **111** pour un plancher à
     # `FOND_SOMBRE_MAX` = 70, quand les deux vraies icônes sont à 31 et
@@ -860,9 +861,22 @@ def test_chaque_icone_du_lexique_est_nommee():
         for index, (nom, _, _) in enumerate(lexique):
             if nom.startswith("7e"):
                 continue
-            check(f"{etiquette:<16} : position {index + 1} = {nom}",
-                  index < len(familles) and familles[index] == nom,
-                  familles[index] if index < len(familles) else "rien")
+            lue = familles[index] if index < len(familles) else "rien"
+            # « CE NOM-LÀ, OU RIEN — JAMAIS UN AUTRE » (21/11/2026 au
+            # soir). Une famille dont tous les gabarits sont sous
+            # `COTE_MIN_POUR_NOMMER` concourt mais ne NOMME pas : son
+            # glyphe est COMPTÉ et rendu `None`. C'est le cas de
+            # `spirit` (10×13), et le silence y est une DÉCISION, pas
+            # un échec — voir `test_un_gabarit_trop_petit_ne_nomme_pas`.
+            # Graver « position 6 = spirit » ici interdirait la
+            # correction au lieu de garder le comportement : une
+            # lecture FAUSSE reste interdite, une abstention motivée ne
+            # l'est pas. (Même forme que le témoin « 3 ou rien » de
+            # `test_champions`, 14/11.)
+            muette = not mce._peut_nommer(mce.charger_gabarits().get(nom, ()))
+            check(f"{etiquette:<16} : position {index + 1} = {nom}"
+                  + (" (ou rien : famille trop petite pour nommer)" if muette else ""),
+                  lue == nom or (muette and lue is None), lue)
 
 
 def test_un_dessin_daffichage_nest_pas_un_mot_cle():
@@ -926,6 +940,217 @@ def test_un_dessin_daffichage_nest_pas_un_mot_cle():
         mce.familles_lues = vraie_lecture
 
 
+# ============================================================
+# LA MATIÈRE D'UN GABARIT - d'où vient chaque PNG, et ce qu'il contient
+# ============================================================
+# OÙ CHAQUE GABARIT A ÉTÉ DÉCOUPÉ : capture, centre d'unité, INDEX de la
+# boîte. C'est la table de la récolte, et elle est ici parce que c'est
+# elle qui rend les assertions de matière possibles — sans elle on ne
+# saurait pas à quelle icône comparer un PNG.
+#
+# Les positions 7 des deux Viktor n'y sont pas (Ewan : « oublie le 7e »).
+SOURCES_DES_GABARITS = {
+    (CAPTURE_KENNEN, (959, 900)): {
+        0: "niveau", 1: "quickstrike", 2: "elusive",
+        3: "spellshield", 4: "regeneration", 5: "augment"},
+    (CAPTURE_VIKTOR, (802, 900)): {
+        0: "niveau2", 1: "aura", 2: "augment2",
+        3: "deathless", 4: "impact", 5: "spirit"},
+    (CAPTURE_VIKTOR, (959, 900)): {0: "niveau3", 4: "fury", 5: "fearsome"},
+    (CAPTURE_20, SOURCES_GABARITS[0]): {
+        0: "ephemeral", 1: "hallowed", 2: "challenger", 3: "overwhelm"},
+    (CAPTURE_20, SOURCES_GABARITS[1]): {
+        0: "ephemeral2", 1: "hallowed2", 2: "challenger2", 3: "overwhelm2"},
+}
+
+
+def _familles_du_masque(bande, glyphe, boite):
+    """Pour chaque famille de couleur, les pixels du glyphe qu'elle a
+    fait entrer dans le masque."""
+    x, y, w, h, _ = boite
+    hsv = cv2.cvtColor(bande, cv2.COLOR_BGR2HSV)[y:y + h, x:x + w]
+    retenu = glyphe > 0
+    return [cv2.inRange(hsv, np.array(bas), np.array(haut)).astype(bool) & retenu
+            for bas, haut in mce.FAMILLES]
+
+
+def _bande_lue(image, centre, adverse=False):
+    """La sous-image que le module segmente — mêmes bornes que lui."""
+    cx, cy = int(centre[0]), int(centre[1])
+    if adverse:
+        y0, y1 = cy - mce.BARRE_ADVERSE_DY_HAUT, cy - mce.BARRE_ADVERSE_DY_BAS
+    else:
+        y0, y1 = cy + mce.BARRE_DY_HAUT, cy + mce.BARRE_DY_BAS
+    return image[y0:y1, cx - mce.BARRE_DEMI_LARGEUR:cx + mce.BARRE_DEMI_LARGEUR]
+
+
+def test_la_matiere_dun_gabarit_est_a_lui():
+    """
+    UN GABARIT NE PORTE QUE SA PROPRE ICÔNE (21/11/2026 au soir).
+
+    218 assertions étaient vertes pendant qu'un gabarit était la MOITIÉ
+    d'un glyphe et qu'un autre portait 18 % de son voisin. Aucune ne
+    pouvait le voir : `test_chaque_icone_du_lexique_a_sa_boite` ne juge
+    que le CENTRE d'une boîte dans un intervalle de 29 px, et
+    l'Augmentation amputée avait déplacé le sien de 128 à 131,5 — bien
+    à l'intérieur. Il manquait une assertion sur la MATIÈRE.
+
+    LES DEUX DÉFAUTS QU'ELLE ATTRAPE, et ils ne sont pas de même nature :
+
+      - le MASQUE PARTAGÉ. `identifier` tranchait le masque de toute la
+        bande à la boîte, si bien qu'un glyphe emportait les pixels de
+        son voisin quand les deux boîtes se chevauchent (quinconce) :
+        `augment2` portait 31 px de `deathless` sur 177. Mesuré, 11 des
+        63 crops étaient dans ce cas. → assertion (A).
+      - L'AGGLOMÉRATION. L'aile gauche de l'Augmentation de Kennen
+        (6×7, aire 27, CYAN à la teinte 95) partait dans le groupe du
+        cercle rouge de Régénération (teinte 5), dont la BOÎTE la
+        chevauche en x. Là, aucun pixel n'est réclamé deux fois — le
+        fragment est bel et bien DANS le groupe : (A) ne voit rien.
+        Ce qui se voit, c'est qu'un MORCEAU du gabarit est d'une famille
+        de couleur étrangère à la sienne. → assertion (B).
+
+    (B) NE FAIT PAS DU MODULE UN TRIEUR PAR COULEUR : le test MESURE une
+    couleur que le module calcule déjà (`FAMILLES`), il ne lui en fait
+    rien faire.
+
+    ET LA TABLE DES SOURCES EST VÉRIFIÉE D'ABORD : si un PNG ne valait
+    plus ce que le chemin de lecture découpe aujourd'hui, les deux
+    assertions porteraient sur autre chose que la bibliothèque livrée.
+    """
+    print("\nLa matière d'un gabarit est à lui")
+    dossier = Path(__file__).parent / "mots_cles"
+    vus = set()
+    for (chemin, centre), noms in SOURCES_DES_GABARITS.items():
+        image = cv2.imread(str(chemin))
+        if image is None:
+            check(f"capture présente ({chemin.name})", False, chemin)
+            continue
+        boites = mce.icones(image, centre)
+        bande = _bande_lue(image, centre)
+        for index, nom in sorted(noms.items()):
+            vus.add(nom)
+            brut = cv2.imread(str(dossier / f"{nom}.png"), cv2.IMREAD_UNCHANGED)
+            glyphe = mce.decouper(image, centre, index)
+            # LE PNG LIVRÉ EST CE QUE LE CHEMIN DE LECTURE DÉCOUPE. Sans
+            # ça, une bibliothèque périmée passerait les deux assertions
+            # suivantes sans que personne ne le sache.
+            check(f"{nom:<13}: le PNG livré est ce que `decouper` rend aujourd'hui",
+                  brut is not None and glyphe is not None
+                  and brut.shape[:2] == glyphe.shape
+                  and bool(((brut[:, :, 3] >= 128) == (glyphe > 0)).all()),
+                  None if brut is None else (brut.shape[:2],
+                                             None if glyphe is None else glyphe.shape))
+            if glyphe is None:
+                continue
+            # (A) aucun pixel de ce glyphe n'est réclamé par un autre.
+            x, y, w, h, _ = boites[index]
+            voles = []
+            for autre in range(len(boites)):
+                if autre == index:
+                    continue
+                xa, ya, wa, ha, _ = boites[autre]
+                x0, x1 = max(x, xa), min(x + w, xa + wa)
+                y0, y1 = max(y, ya), min(y + h, ya + ha)
+                if x0 >= x1 or y0 >= y1:
+                    continue
+                sien = mce.decouper(image, centre, autre)
+                commun = ((glyphe[y0 - y:y1 - y, x0 - x:x1 - x] > 0)
+                          & (sien[y0 - ya:y1 - ya, x0 - xa:x1 - xa] > 0))
+                if commun.any():
+                    voles.append((autre, int(commun.sum())))
+            check(f"{nom:<13}: aucun pixel partagé avec une autre icône", not voles, voles)
+            # (B) aucun MORCEAU d'une famille de couleur étrangère.
+            familles = _familles_du_masque(bande, glyphe, boites[index])
+            dominante = int(np.argmax([int(f.sum()) for f in familles]))
+            nombre, etiquettes = cv2.connectedComponents((glyphe > 0).astype(np.uint8), 8)
+            etrangers = []
+            for k in range(1, nombre):
+                morceau = etiquettes == k
+                if int(morceau.sum()) < mce.FRAGMENT_AIRE_MIN:
+                    continue    # une miette n'est pas un morceau
+                parts = [int((f & morceau).sum()) for f in familles]
+                if sum(parts) and int(np.argmax(parts)) != dominante:
+                    etrangers.append((int(morceau.sum()), int(np.argmax(parts))))
+            check(f"{nom:<13}: aucun morceau d'une autre famille de couleur",
+                  not etrangers, etrangers)
+    attendus = {png.stem for png in dossier.glob("*.png")}
+    check(f"les {len(attendus)} gabarits livrés ont tous une source connue",
+          vus == attendus, sorted(attendus ^ vus))
+
+
+def test_un_gabarit_trop_petit_ne_nomme_pas():
+    """
+    UN PÂTÉ DE 10 PX NE NOMME RIEN (21/11/2026 au soir).
+
+    `spirit` (la flamme de Volonté) fait 10×13 pour 75 px, exactement
+    sur `ICONE_COTE_MIN` : normalisé à 32 px et égalisé en trait, il
+    ressemble à tout. Mesuré sur les 15 glyphes ÉTRANGERS des quatre
+    captures — ceux dont AUCUN gabarit n'existe — il était le meilleur
+    candidat des trois plus hauts, et il mettait la bibliothèque à 0.024
+    du plancher de score, le plancher de MARGE étant déjà franchi par
+    deux d'entre eux (0.112 et 0.120 contre 0.10).
+
+    CE QU'ON EXIGE, et c'est la doctrine du module (« les DEUX planchers
+    doivent être franchis ») prise au sérieux : un glyphe étranger ne
+    doit en franchir AUCUN. « Il n'est pas nommé » serait plus faible —
+    un seul plancher y suffit, et c'est l'état qu'on vient de quitter.
+
+    ET LE SILENCE NE COÛTE PAS LE COMPTE : un glyphe dont la famille ne
+    peut pas nommer reste une icône LUE et COMPTÉE, donc
+    `porte_des_mots_cles` le voit toujours. Sans quoi on échangerait un
+    faux positif contre un faux négatif.
+    """
+    print("\nUn gabarit trop petit ne nomme pas")
+    gabarits = mce.charger_gabarits()
+    muettes = sorted(f for f, v in gabarits.items() if not mce._peut_nommer(v))
+    check("au moins une famille est trop petite pour nommer (sinon ce test ne juge rien)",
+          bool(muettes), muettes)
+    for f in muettes:
+        check(f"   « {f} » : tous ses gabarits sont sous le plancher",
+              all(min(v.shape) < mce.COTE_MIN_POUR_NOMMER for v in gabarits[f]),
+              [v.shape for v in gabarits[f]])
+
+    # LES ÉTRANGERS : les unités dont AUCUNE icône n'a de gabarit.
+    etrangers = (("Swain", CAPTURE, (724, 900), False),
+                 ("Legion Saboteur", CAPTURE, (1037, 900), False),
+                 ("Powder Keg (kennen)", CAPTURE_KENNEN, (880, 180), True),
+                 ("Powder Keg (viktor)", CAPTURE_VIKTOR, (959, 180), True),
+                 ("Cursed Keeper", CAPTURE_20, (1037, 180), True),
+                 ("Vaults of Helia", CAPTURE_20, (880, 180), True))
+    juges = 0
+    for etiquette, chemin, centre, adverse in etrangers:
+        image = cv2.imread(str(chemin))
+        if image is None:
+            check(f"capture présente ({etiquette})", False, chemin)
+            continue
+        for index in range(len(mce.icones(image, centre, adverse=adverse))):
+            glyphe = mce.decouper(image, centre, index, adverse=adverse)
+            notes = sorted(((max(mce._score(glyphe, v) for v in variantes), famille)
+                            for famille, variantes in gabarits.items()), reverse=True)
+            (score, famille), (second, _) = notes[0], notes[1]
+            juges += 1
+            if famille in muettes:
+                continue    # elle ne peut pas nommer : elle ne compte pas ici
+            check(f"{etiquette:<20}[{index}] ne franchit NI le score NI la marge "
+                  f"(meilleur : {famille})",
+                  score < mce.SCORE_SUR and score - second < mce.MARGE_SURE,
+                  f"score {score:.3f}, marge {score - second:.3f}")
+    check("   et il y avait bien des glyphes étrangers à juger", juges >= 15, juges)
+
+    # LE COMPTE NE PAIE PAS LE SILENCE : la Volonté de Viktor n°1 est
+    # rendue `None` et reste une icône.
+    image = cv2.imread(str(CAPTURE_VIKTOR))
+    if image is None:
+        check("capture du 21/11 présente", False, CAPTURE_VIKTOR)
+        return
+    familles = mce.familles_lues(image, (802, 900))
+    check("Viktor n1 : 7 glyphes lus, dont celui qu'on ne nomme pas",
+          len(familles) == 7, familles)
+    check("   et l'unité porte toujours des mots-clés",
+          mce.porte_des_mots_cles(image, (802, 900)) is True)
+
+
 def test_la_planche_montre_chaque_gabarit():
     """
     LA PLANCHE EST LA CONTRE-ÉPREUVE DE L'ÉTIQUETAGE (demandée par Ewan
@@ -954,23 +1179,57 @@ def test_la_planche_montre_chaque_gabarit():
         check("et elle est relisible", image is not None)
         if image is None:
             return
-        variantes = sum(len(v) for v in mce.charger_gabarits().values())
-        colonnes = min(mce._PLANCHE_COLONNES, variantes)
-        lignes = (variantes + colonnes - 1) // colonnes
+        # ⚠ L'ASSERTION D'AVANT NE POUVAIT PAS ROUGIR (corrigé le
+        # 21/11/2026 au soir). Elle lisait
+        # `image.shape[0] % lignes == 0 and image.shape[1] % colonnes == 0`
+        # sous le libellé « une vignette par variante » : or `planche()`
+        # CONSTRUIT l'image comme `lignes × case_h` par
+        # `colonnes × case_l`, donc le modulo est nul pour TOUTE sortie
+        # possible — une planche affichant 23 fois le MÊME glyphe la
+        # passait. C'est la huitième assertion du projet à ne rien
+        # pouvoir prouver.
+        #
+        # CE QU'ON EXIGE À LA PLACE, et ce sont deux choses que l'image
+        # seule ne peut pas fabriquer : le nombre de vignettes vient des
+        # FICHIERS du dossier (pas de `charger_gabarits`, qui est la
+        # source de la planche — se comparer à soi ne prouve rien), et
+        # chaque vignette porte le glyphe QU'ELLE ANNONCE, relu au pixel
+        # après division par le grossissement.
+        fichiers = sorted((Path(__file__).parent / "mots_cles").glob("*.png"))
+        gabarits = mce.charger_gabarits()
+        attendus = [m for famille in sorted(gabarits) for m in gabarits[famille]]
+        check(f"la planche montre une vignette par PNG du dossier "
+              f"({len(fichiers)})", len(attendus) == len(fichiers),
+              (len(attendus), len(fichiers)))
+        colonnes = min(mce._PLANCHE_COLONNES, len(fichiers))
+        lignes = (len(fichiers) + colonnes - 1) // colonnes
         case_h, case_l = image.shape[0] // lignes, image.shape[1] // colonnes
-        check(f"une vignette par variante ({variantes})",
-              image.shape[0] % lignes == 0 and image.shape[1] % colonnes == 0,
-              image.shape)
-        vides = []
-        for index in range(variantes):
+        vides, faux = [], []
+        for index in range(lignes * colonnes):
             ligne, colonne = divmod(index, colonnes)
             case = image[ligne * case_h:(ligne + 1) * case_h,
                          colonne * case_l:(colonne + 1) * case_l]
             # Au-dessus du bandeau de légende : le glyphe lui-même.
-            glyphe = case[:case_h - mce._PLANCHE_LEGENDE]
-            if int((glyphe > 200).sum()) < 20:
+            dessin = case[:case_h - mce._PLANCHE_LEGENDE] > 200
+            if index >= len(attendus):
+                continue
+            if int(dessin.sum()) < 20:
                 vides.append(index)
+                continue
+            ys, xs = np.nonzero(dessin.any(axis=2) if dessin.ndim == 3 else dessin)
+            decoupe = dessin[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+            if decoupe.ndim == 3:
+                decoupe = decoupe.any(axis=2)
+            # `cv2.resize` en INTER_NEAREST à l'échelle ENTIÈRE `_PLANCHE_ZOOM`
+            # fait de chaque pixel un carré : on redivise, on compare.
+            z = mce._PLANCHE_ZOOM
+            attendu = attendus[index] > 0
+            if (decoupe.shape != (attendu.shape[0] * z, attendu.shape[1] * z)
+                    or not bool((decoupe[::z, ::z] == attendu).all())):
+                faux.append((index, decoupe.shape,
+                             (attendu.shape[0] * z, attendu.shape[1] * z)))
         check("aucune vignette vide — aucun gabarit perdu", not vides, vides)
+        check("chaque vignette porte bien SON glyphe, au pixel", not faux, faux)
     finally:
         shutil.rmtree(dossier, ignore_errors=True)
 
@@ -995,6 +1254,8 @@ def main():
                  test_une_boite_qui_touche_le_bord_de_la_bande_nest_pas_une_icone,
                  test_chaque_icone_du_lexique_est_nommee,
                  test_un_dessin_daffichage_nest_pas_un_mot_cle,
+                 test_la_matiere_dun_gabarit_est_a_lui,
+                 test_un_gabarit_trop_petit_ne_nomme_pas,
                  test_la_planche_montre_chaque_gabarit):
         test()
     print()
