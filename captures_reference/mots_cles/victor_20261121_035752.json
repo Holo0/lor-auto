@@ -1,0 +1,119 @@
+{
+ "PlayerName": "WiseWolveHolo",
+ "OpponentName": "card_02BW032T3_Name",
+ "GameState": "InProgress",
+ "Screen": {
+  "ScreenWidth": 1920,
+  "ScreenHeight": 1080
+ },
+ "Rectangles": [
+  {
+   "CardID": 1506237889,
+   "CardCode": "face",
+   "TopLeftX": 179,
+   "TopLeftY": 481,
+   "Width": 117,
+   "Height": 117,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 2068249191,
+   "CardCode": "face",
+   "TopLeftX": 179,
+   "TopLeftY": 716,
+   "Width": 117,
+   "Height": 117,
+   "LocalPlayer": false
+  },
+  {
+   "CardID": 165600399,
+   "CardCode": "03PZ003",
+   "TopLeftX": 739,
+   "TopLeftY": 260,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1425034318,
+   "CardCode": "05BC058",
+   "TopLeftX": 1052,
+   "TopLeftY": 260,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 643433096,
+   "CardCode": "03PZ004",
+   "TopLeftX": 619,
+   "TopLeftY": 84,
+   "Width": 176,
+   "Height": 246,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1866695271,
+   "CardCode": "02BW032",
+   "TopLeftX": 933,
+   "TopLeftY": 1252,
+   "Width": 149,
+   "Height": 217,
+   "LocalPlayer": false
+  },
+  {
+   "CardID": 1300694536,
+   "CardCode": "03PZ004",
+   "TopLeftX": 787,
+   "TopLeftY": 86,
+   "Width": 176,
+   "Height": 247,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1627744943,
+   "CardCode": "05BC181",
+   "TopLeftX": 837,
+   "TopLeftY": 1250,
+   "Width": 149,
+   "Height": 217,
+   "LocalPlayer": false
+  },
+  {
+   "CardID": 744858624,
+   "CardCode": "02BW032T1",
+   "TopLeftX": 896,
+   "TopLeftY": 980,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": false
+  },
+  {
+   "CardID": 1230960096,
+   "CardCode": "03PZ013",
+   "TopLeftX": 955,
+   "TopLeftY": 84,
+   "Width": 177,
+   "Height": 248,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1030942918,
+   "CardCode": "03PZ003",
+   "TopLeftX": 896,
+   "TopLeftY": 260,
+   "Width": 127,
+   "Height": 160,
+   "LocalPlayer": true
+  },
+  {
+   "CardID": 1053451138,
+   "CardCode": "03PZ004",
+   "TopLeftX": 1126,
+   "TopLeftY": 78,
+   "Width": 178,
+   "Height": 249,
+   "LocalPlayer": true
+  }
+ ]
+}

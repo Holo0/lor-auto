@@ -3653,6 +3653,76 @@ jamais exercé dans une partie. Tests :
 `test_un_mot_cle_lu_ne_retire_jamais_un_imprime`,
 `test_la_lecture_decran_est_vraiment_branchee`.
 
+### Le lexique des icônes — étiqueté par Ewan le 21/11/2026
+
+**ONZE GLYPHES NOMMÉS, SUR UN VRAI PLATEAU.** Deux Viktor (03PZ003) et un
+Kennen (05BC058) du banc d'Ewan, chacun portant six ou sept icônes.
+Captures appariées à leur trame d'API :
+`captures_reference/mots_cles/kennen_20261121_034644.png` et
+`victor_20261121_035752.png` (+ leurs `.json`).
+
+| icône | signification | modélisé ? |
+| --- | --- | --- |
+| cercle bleu à éclair, ou chevron doré | **niveau du champion** | PAS un mot-clé |
+| arcs cyan concentriques | **effet de zone** (`AuraVisualFakeKeyword`) | PAS un mot-clé |
+| épée orange | Frappe rapide | oui — `QuickStrike` |
+| cercle barré orange | Insaisissable | oui — `Elusive` |
+| tour dorée | Robuste | oui — `Tough` |
+| face grimaçante orange | Redoutable | oui — `Fearsome` |
+| aile/fourche dorée | Bouclier antisorts | non — `SpellShield`, connu de `riposte.py` seulement |
+| cercle rouge à crochet | Régénération | non — « volontairement non modélisé » |
+| tête cornue dorée | Fureur | non — idem |
+| symbole cyan | Augmentation | non — `Augment` |
+| flamme bleue | Volonté | non — `Spirit` (12 cartes) |
+
+**LA BASE NOMME DÉJÀ LE FAUX MOT-CLÉ.** L'« effet de zone » d'Ewan est
+`AuraVisualFakeKeyword`, porté par **48 cartes**, avec son cousin
+`LandmarkVisualOnly` sur **133** autres. Riot les déclare lui-même comme
+des mots-clés d'AFFICHAGE. L'exclusion s'appuiera donc sur la donnée, pas
+sur une liste d'exceptions devinée — même principe que « on compte les
+marqueurs, on ne reconnaît pas des sorts ».
+
+**ZÉRO FAUX POSITIF, VÉRIFIÉ SUR CE PLATEAU.** Face aux onze types de
+glyphes ci-dessus, dont AUCUN n'a de gabarit, `identifier` rend `?` à
+chaque fois — il n'en a nommé aucun à tort. C'est la promesse « jamais
+une valeur approchée » tenue sur un plateau réel, et pas seulement sur
+la scène témoin.
+
+### TROIS DÉFAUTS MESURÉS LE 21/11, et le troisième aveugle le bot
+
+**1. CÔTÉ ADVERSE, LA BARRE EST EN HAUT DE LA CARTE.** Les statistiques
+et la barre de mots-clés sont INVERSÉES chez l'adversaire. `ZONES_DE_
+PLATEAU` contient bien `enemy_board` et `enemy_attack`, mais
+`lire_les_mots_cles` y lit la bande `dy +38..+82` — c'est-à-dire la zone
+des statistiques. Mesuré : en bande MIROIR (`dy -87..-49`), l'unité
+`02BW032T1` rend **deux composantes de 19×23 et 18×25 px**, exactement
+la taille d'un glyphe, là où la bande actuelle en rend **zéro**.
+**LA PREUVE LA PLUS NETTE** : `02BW032T1` « Powder Keg » IMPRIME
+`Immobile` et `Vulnerable` — deux mots-clés MODÉLISÉS, et deux qui
+décident d'un blocage. Le module rapporte 0 icône sur une carte qui en a
+forcément. **Le côté adverse est entièrement aveugle**, et c'est celui où
+Provocateur, Insaisissable et Redoutable comptent le plus.
+
+**2. L'INDICATEUR DE NIVEAU EST COMPTÉ COMME UN GLYPHE.** Il occupe la
+première place de la barre et n'est pas un mot-clé (fait de jeu d'Ewan).
+Conséquence : `a_recu_un_mot_cle` déclarerait « cette carte a reçu un
+mot-clé » pour **tout champion monté de niveau sans mot-clé imprimé** —
+un faux positif sur la seule promesse que cette fonction porte. Sans
+appelant aujourd'hui, donc sans coût en jeu ; à corriger avant qu'elle en
+ait un.
+
+**3. LA BARRE DÉBORDE, ET LES ICÔNES SE METTENT EN QUINCONCE.** Mesuré
+sur Kennen : barre noire à `dy +49..+87` contre une bande lue `+38..+82`
+— **5 px coupés par le bas**. Et au-delà de quatre mots-clés, le jeu
+TASSE les icônes sur DEUX NIVEAUX au lieu d'une ligne : ce que les
+scènes du 14/11 (≤ 5 icônes alignées) et du 20/11 (4 alignées) ne
+pouvaient pas révéler. Résultat mesuré : **5 boîtes pour 7 icônes, 4
+pour 6, 4 pour 7** — une sur deux est perdue ou fragmentée.
+
+**RIEN DE TOUT ÇA N'EST CORRIGÉ** (21/11). Les captures et le lexique
+sont là ; les gabarits des neuf mots-clés nommés ne sont PAS récoltés,
+parce que segmenter avant de corriger graverait des gabarits faux.
+
 ## Journal des sessions
 
 Une ligne par session jouée, pour remplacer les bilans « ce qui a tourné »
