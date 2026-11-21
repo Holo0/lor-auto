@@ -3687,11 +3687,11 @@ Captures appariées à leur trame d'API :
 | --- | --- | --- |
 | 1 | *niveau du champion* | PAS un mot-clé |
 | 2 | *effet de zone* (`AuraVisualFakeKeyword`) | PAS un mot-clé |
-| 3 | **à confirmer** — « tu connais » | ? |
+| 3 | Augmentation | non — `Augment` |
 | 4 | Immortalité | oui — `Deathless` (confirmé par Ewan) |
 | 5 | Impact | oui — `Impact` |
 | 6 | Volonté | non — `Spirit` (12 cartes) |
-| 7 | **à confirmer** — « tu connais » | ? |
+| 7 | *non nommée* — Ewan : « oublie le 7e » | — |
 
 **Viktor n°2 (03PZ003, banc), 7 icônes** — identique au n°1 sauf les
 positions 5 et 6.
@@ -3701,14 +3701,29 @@ positions 5 et 6.
 | 5 | Fureur | non — `Fury` |
 | 6 | Redoutable | oui — `Fearsome` |
 
-**CE QUI RESTE À NOMMER** : les positions **3 et 7 des deux Viktor**.
-Ewan les a dites « tu connais », donc elles sont parmi les cinq de
-Kennen — mais après la méprise sur les deux épées, **les déduire de leur
-apparence serait refaire l'erreur**. À demander.
+**LA MESURE ET LA VÉRITÉ TERRAIN SE SONT CROISÉES SANS SE PARLER.**
+Avant qu'Ewan ne nomme la position 3 du Viktor, l'appariement au pixel
+contre les six icônes de Kennen — toutes nommées — avait déjà rendu
+« IDENTIQUE à 0.808 » avec celle de Kennen la plus à droite, c'est-à-dire
+**Augmentation**. Ewan a répondu « Augment ». Deux chemins indépendants,
+la même réponse : c'est ce qu'on attend d'un appariement au pixel, et
+c'est ce qui le rend utilisable pour CONTRÔLER une étiquette.
 
-**CINQ MOTS-CLÉS MODÉLISÉS SONT DÉJÀ NOMMÉS** et donc récoltables :
-`QuickStrike`, `Elusive`, `Deathless`, `Impact`, `Fearsome`. Chacun
-change un calcul que le bot sait déjà faire.
+La position 7 des deux Viktor reste non nommée, à la demande d'Ewan
+(« oublie le 7e »). Elle n'est donc pas récoltée.
+
+**DIX MOTS-CLÉS NOMMÉS, DONT CINQ MODÉLISÉS** — `QuickStrike`, `Elusive`,
+`Deathless`, `Impact`, `Fearsome` — chacun changeant un calcul que le bot
+sait déjà faire. Les cinq autres (`SpellShield`, `Regeneration`,
+`Augment`, `Spirit`, `Fury`) seront récoltés aussi : les reconnaître sans
+les modéliser reste utile, parce que c'est ce qui permet de compter les
+icônes NON reconnues sans les confondre.
+
+**UNE QUESTION OUVERTE, QUE LA PLANCHE TRANCHERA** : l'épée de Kennen
+(position 2, Frappe rapide) et celle de Viktor n°1 (position 5, Impact)
+se ressemblent beaucoup. Une fois les glyphes découpés proprement, les
+comparer au pixel dira s'il s'agit de DEUX icônes ou d'une seule mal
+étiquetée. On ne récolte pas les deux avant de savoir.
 
 **LA BASE NOMME ELLE-MÊME LE FAUX MOT-CLÉ.** L'« effet de zone » est
 `AuraVisualFakeKeyword`, porté par **48 cartes**, avec `LandmarkVisualOnly`
